@@ -1,1 +1,11 @@
 .venv
+target/
+dbt_packages/
+logs/
+.env
+*.json
+dbt_internal_packages/
+*.ipynb
+
+
+.vscode/
