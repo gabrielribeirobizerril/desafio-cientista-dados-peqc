@@ -1,0 +1,182 @@
+version: 2
+
+sources:
+  - name: educacao
+    description: >
+      Dados educacionais da rede municipal do Rio de Janeiro (Registro Municipal
+      Integrado), anonimizados e aleatorizados pelo produtor para o desafio técnico.
+      Origem: arquivos Parquet em gs://case_vagas/rmi, carregados no dataset raw_rmi
+      pelo script scripts/load_raw.ps1 (carga idempotente).
+      Um único ano letivo (2025, segundo o produtor), com o ano anonimizado para 2000;
+      dia e mês preservados. As chaves entre tabelas e as distribuições de cada coluna
+      foram preservadas, mas as relações entre colunas não são garantidas.
+      Os identificadores e bairros são hashes com salt: não tentar reidentificar.
+    schema: raw_rmi
+    tables:
+      - name: aluno
+        description: >
+          Uma linha por aluno (97.044 alunos). Chave: id_aluno.
+          Contém a turma final do aluno no ano letivo.
+        columns:
+          - name: id_aluno
+            data_type: bytes
+            description: >
+              Identificador anonimizado do aluno (hash binário de 17 bytes).
+              Documentado pelo produtor como STRING, mas entregue como BYTES.
+              Único e sem nulos.
+          - name: id_turma
+            data_type: int64
+            description: >
+              Turma final do aluno no ano letivo (hash com salt). Para a turma
+              vigente em cada bimestre, usar avaliacao.id_turma.
+          - name: faixa_etaria
+            data_type: string
+            description: >
+              Faixa etária (0-5, 6-10, 11-14, 15-17, 18+), derivada da idade atual
+              do aluno, e não da idade no ano letivo. Distribuição implausível para
+              uma rede municipal (51,5% com 15-17 anos); usar com ressalva.
+          - name: bairro
+            data_type: int64
+            description: >
+              Hash com salt do bairro de residência. 1.069 valores distintos para
+              cerca de 160 bairros oficiais (provável texto livre antes do hash);
+              não comparável com escola.bairro. 68 nulos.
+
+      - name: avaliacao
+        description: >
+          Uma linha por aluno e bimestre, com as notas das disciplinas em colunas
+          (e não uma linha por disciplina, como diz o README do desafio).
+          221.687 linhas de 69.502 alunos (72% dos alunos de aluno).
+          A chave aluno + bimestre não é única: 581 linhas excedentes, das quais
+          547 com turmas diferentes no mesmo bimestre. 14,9% das linhas não têm
+          nenhuma nota. Fonte do indicador de absenteísmo crônico.
+        columns:
+          - name: id_aluno
+            data_type: bytes
+            description: >
+              Identificador anonimizado do aluno (hash binário de 17 bytes).
+              Todos existem em aluno.
+          - name: id_turma
+            data_type: int64
+            description: >
+              Turma em que o aluno estava no bimestre (hash com salt). Difere da
+              turma final (aluno.id_turma) para 9,4% dos alunos avaliados, por
+              mudança de turma ao longo do ano. É a ponte para a escola do registro.
+          - name: frequencia
+            data_type: float64
+            description: >
+              Percentual de frequência geral do aluno no bimestre, de 0 a 100.
+              1.734 nulos. Diferente de frequencia.frequencia, que não está em
+              escala percentual.
+          - name: bimestre
+            data_type: string
+            description: >
+              Bimestre do ano letivo, valores "1" a "4". Documentado pelo produtor
+              como INT64, mas entregue como STRING.
+          - name: disciplina_1
+            data_type: float64
+            description: >
+              Nota de Língua Portuguesa, de 0 a 10, com ruído de ±0,2 aplicado na
+              anonimização (limitado aos extremos). Nula em cerca de 16% das linhas.
+          - name: disciplina_2
+            data_type: float64
+            description: >
+              Nota de Ciências, de 0 a 10, com ruído de ±0,2 aplicado na
+              anonimização (limitado aos extremos). Nula em cerca de 16% das linhas.
+          - name: disciplina_3
+            data_type: float64
+            description: >
+              Nota de Língua Estrangeira (Inglês). 100% nula na carga atual;
+              disciplina sem dados de desempenho.
+          - name: disciplina_4
+            data_type: float64
+            description: >
+              Nota de Matemática, de 0 a 10, com ruído de ±0,2 aplicado na
+              anonimização (limitado aos extremos). Nula em cerca de 16% das linhas.
+
+      - name: escola
+        description: >
+          Uma linha por escola (1.558 escolas). Chave: id_escola.
+          Não contém tipo nem região, ao contrário do que diz o README do desafio.
+        columns:
+          - name: id_escola
+            data_type: int64
+            description: >
+              Identificador anonimizado da escola (hash com salt). Único e sem nulos.
+          - name: bairro
+            data_type: int64
+            description: >
+              Hash com salt do bairro da escola. 169 valores distintos, sem nulos.
+              Não comparável com aluno.bairro (nenhum valor em comum) nem com
+              datario.dados_mestres.bairro.
+
+      - name: frequencia
+        description: >
+          Uma linha por aluno, turma, disciplina e período de apuração (e não por
+          aluno e dia, como diz o README do desafio). 2.727.684 linhas.
+          11 períodos, quase todos mensais; cobertura efetiva de 05/02 a 17/07
+          (depois disso, menos de 1% dos alunos).
+          Duplicatas: 2.576 linhas excedentes (1.483 idênticas e 1.093 chaves com
+          dois valores de frequência diferentes).
+          O vínculo aluno → turma desta tabela não corresponde ao de aluno e
+          avaliacao (concordância de 0,01%): usar apenas o mapa turma → escola,
+          validado com evidência independente.
+        columns:
+          - name: id_escola
+            data_type: int64
+            description: >
+              Escola da turma (hash com salt). Cada id_turma tem sempre a mesma
+              id_escola nesta tabela.
+          - name: id_aluno
+            data_type: bytes
+            description: >
+              Identificador anonimizado do aluno (hash binário de 17 bytes).
+              Não usar para ligar esta tabela a aluno ou avaliacao por aluno:
+              o vínculo com a turma é inconsistente com as demais tabelas.
+          - name: id_turma
+            data_type: int64
+            description: >
+              Turma do registro (hash com salt). Usada para montar o mapa
+              turma → escola.
+          - name: data_inicio
+            data_type: string
+            description: >
+              Início do período de apuração, no formato AAAA-MM-DD. Ano anonimizado
+              para 2000; dia e mês preservados.
+          - name: data_fim
+            data_type: string
+            description: >
+              Fim do período de apuração, no formato AAAA-MM-DD. Ano anonimizado
+              para 2000; dia e mês preservados.
+          - name: disciplina
+            data_type: string
+            description: >
+              Disciplina do registro: disciplina_1 (Português), disciplina_2
+              (Ciências), disciplina_3 (Inglês), disciplina_4 (Matemática).
+          - name: frequencia
+            data_type: float64
+            description: >
+              Não é percentual de presença. Calculada pelo produtor como
+              100 - (faltas / dias letivos), sem multiplicar por 100: valores
+              entre 97,3 e 100, mediana 100. Serve apenas como índice relativo
+              de faltas; o corte de 75% não se aplica.
+
+      - name: turma
+        description: >
+          Uma linha por aluno (e não por turma, como diz o README do desafio).
+          Chave: id_aluno. Mapeamento aluno → turma final, idêntico a aluno.id_turma
+          para 100% dos alunos. Não contém série nem turno.
+        columns:
+          - name: ano
+            data_type: int64
+            description: >
+              Ano letivo anonimizado. Constante (2000) em todas as linhas.
+          - name: id_turma
+            data_type: int64
+            description: >
+              Turma final do aluno (hash com salt). Igual a aluno.id_turma.
+          - name: id_aluno
+            data_type: bytes
+            description: >
+              Identificador anonimizado do aluno (hash binário de 17 bytes).
+              Único e sem nulos.
