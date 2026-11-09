@@ -1,6 +1,8 @@
 version: 2
 
 models:
+
+  # Base de registro das avaliações
   - name: stg_educacao__avaliacoes
     description: >
       Staging da tabela avaliacao: um registro por aluno, turma e bimestre
@@ -9,9 +11,8 @@ models:
       bimestre para inteiro e remove apenas linhas idênticas. Restam 31 chaves
       duplicadas, consolidadas na camada intermediate.
     data_tests:
-      # Unicidade da chave. As 31 duplicatas atuais são conhecidas e tratadas
-      # na intermediate: avisa de 1 a 100 e falha acima disso (~3x o atual),
-      # para detectar um problema novo de carga.
+      # Unicidade da chave: só monitora (31 duplicatas conhecidas na fonte).
+      # A unicidade é garantida na intermediate, com severity error.
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns:
@@ -19,9 +20,7 @@ models:
               - id_turma
               - bimestre
           config:
-            severity: error
-            warn_if: ">0"
-            error_if: ">100"
+            severity: warn
     columns:
       - name: id_aluno
         data_type: string
@@ -36,6 +35,11 @@ models:
           - dbt_expectations.expect_column_value_lengths_to_equal:
               arguments:
                 value: 34
+          # Integridade referencial: toda avaliação pertence a um aluno existente.
+          - relationships:
+              arguments:
+                to: ref('stg_educacao__alunos')
+                field: id_aluno
 
       - name: id_turma
         data_type: string
@@ -70,12 +74,12 @@ models:
               arguments:
                 min_value: 0
                 max_value: 100
-          # Monitora a completude: 1.734 nulos conhecidos; falha acima de 3.000.
-          - not_null:
-              config:
-                severity: error
-                warn_if: ">0"
-                error_if: ">3000"
+          # Completude em proporção (independe do tamanho da base): com mais de
+          # 5% de nulos, o absenteísmo deixa de representar a rede.
+          # Hoje: 1.734 nulos em 221.684 linhas (0,78%).
+          - dbt_utils.not_null_proportion:
+              arguments:
+                at_least: 0.95
 
       - name: nota_portugues
         data_type: float64
@@ -120,3 +124,64 @@ models:
               arguments:
                 min_value: 0
                 max_value: 10
+
+  # Base cadastral de alunos
+  - name: stg_educacao__alunos
+    description: >
+      Staging da tabela aluno: um registro por aluno (97.044). Padroniza
+      id_aluno (hex) e id_turma (texto), trata o bairro como categoria e
+      cria a ordem das faixas etárias.
+    columns:
+      - name: id_aluno
+        data_type: string
+        description: >
+          Chave do model. Identificador anonimizado do aluno em hexadecimal
+          (34 caracteres), padronizado pela macro formatar_id_aluno.
+        data_tests:
+          # Chave primária.
+          - unique
+          - not_null
+          # Mesma regra das demais tabelas; outro tamanho quebraria os joins.
+          - dbt_expectations.expect_column_value_lengths_to_equal:
+              arguments:
+                value: 34
+
+      - name: id_turma
+        data_type: string
+        description: >
+          Turma final do aluno no ano letivo (hash com salt, convertido para
+          texto). Para a turma de cada bimestre, usar avaliacoes.id_turma.
+        data_tests:
+          - not_null
+
+      - name: faixa_etaria
+        data_type: string
+        description: >
+          Faixa etária derivada da idade atual do aluno, e não da idade no ano
+          letivo. Distribuição implausível para uma rede municipal (51,5% com
+          15-17 anos); usar com ressalva.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['0-5', '6-10', '11-14', '15-17', '18+']
+
+      - name: bairro_residencia
+        data_type: string
+        description: >
+          Hash do bairro de residência, tratado como categoria. 1.069 valores
+          para cerca de 160 bairros oficiais (provável texto livre antes do
+          hash); não comparável com o bairro da escola.
+        data_tests:
+          # Só monitora (68 nulos conhecidos): a coluna não alimenta nenhuma
+          # análise, então nenhum volume de nulos justifica parar o pipeline.
+          - not_null:
+              config:
+                severity: warn
+
+      - name: ordem_faixa_etaria
+        data_type: int64
+        description: >
+          Ordem das faixas etárias (1 = 0-5 até 5 = 18+), para ordenação correta.
+        data_tests:
+          # Nulo indica uma faixa nova que o CASE não cobre.
+          - not_null
