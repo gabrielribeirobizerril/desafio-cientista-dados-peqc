@@ -21,3 +21,8 @@ snapshot-paths: ["snapshots"]
 clean-targets:         # directories to be removed by `dbt clean`
   - "target"
   - "dbt_packages"
+models:
+  rmi_educacao:
+    staging:
+      +materialized: view
+      +tags: ["staging"]
