@@ -234,3 +234,35 @@ models:
                 quote: false
               config:
                 severity: error
+
+  # Cadastro de escolas
+  - name: stg_educacao__escolas
+    description: >
+      Staging da tabela escola: um registro por escola (1.558). Não contém
+      tipo nem região, ao contrário do que diz o README do desafio; a única
+      informação geográfica é o bairro anonimizado.
+    columns:
+      - name: id_escola
+        data_type: string
+        description: >
+          Chave do model. Identificador anonimizado da escola (hash com salt,
+          convertido para texto).
+        data_tests:
+          # Chave primária.
+          - unique
+          - not_null
+
+      - name: bairro_escola
+        data_type: string
+        description: >
+          Hash do bairro da escola, tratado como categoria. 169 valores
+          distintos, compatível com os cerca de 160 bairros oficiais do Rio.
+          Unidade geográfica da análise. Não comparável com
+          alunos.bairro_residencia nem com datario.dados_mestres.bairro.
+        data_tests:
+          # Unidade geográfica da análise: uma escola sem bairro sairia da
+          # análise regional em silêncio. Hoje 100% preenchido, então o
+          # primeiro nulo indica mudança na fonte.
+          - not_null:
+              config:
+                severity: error
