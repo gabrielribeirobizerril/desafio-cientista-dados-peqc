@@ -19,7 +19,7 @@ renomeado as (
     select
         -- chaves
         {{ formatar_id_aluno('id_aluno') }} as id_aluno,
-        id_turma,
+        cast(id_turma as string) as id_turma,
         safe_cast(bimestre as int64) as bimestre,
 
         -- frequência geral do aluno no bimestre (0 a 100)

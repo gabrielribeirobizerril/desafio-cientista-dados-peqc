@@ -1,58 +1,122 @@
 version: 2
 
 models:
-  - name: stg_educacao__avaliacao
+  - name: stg_educacao__avaliacoes
     description: >
-      Staging da tabela avaliacao: uma linha por aluno e bimestre, com as notas
-      das disciplinas em colunas. Renomeia colunas, padroniza id_aluno (hex),
-      converte bimestre para inteiro e remove apenas linhas idênticas.
-      A chave aluno + bimestre ainda não é única (578 linhas em conflito),
-      tratadas na camada intermediate.
+      Staging da tabela avaliacao: um registro por aluno, turma e bimestre
+      (um aluno transferido durante o bimestre tem um registro em cada turma).
+      Renomeia colunas, padroniza id_aluno (hex) e id_turma (texto), converte
+      bimestre para inteiro e remove apenas linhas idênticas. Restam 31 chaves
+      duplicadas, consolidadas na camada intermediate.
+    data_tests:
+      # Unicidade da chave. As 31 duplicatas atuais são conhecidas e tratadas
+      # na intermediate: avisa de 1 a 100 e falha acima disso (~3x o atual),
+      # para detectar um problema novo de carga.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - id_aluno
+              - id_turma
+              - bimestre
+          config:
+            severity: error
+            warn_if: ">0"
+            error_if: ">100"
     columns:
       - name: id_aluno
         data_type: string
         description: >
           Identificador anonimizado do aluno em hexadecimal (34 caracteres),
           padronizado pela macro formatar_id_aluno. Todos existem em aluno.
+        data_tests:
+          # Sem aluno, o registro não se liga a nada.
+          - not_null
+          # Garante que a macro funcionou; outro tamanho indicaria mudança no
+          # hash da fonte e faria os joins falharem em silêncio.
+          - dbt_expectations.expect_column_value_lengths_to_equal:
+              arguments:
+                value: 34
 
       - name: id_turma
-        data_type: int64
+        data_type: string
         description: >
-          Turma em que o aluno estava no bimestre (hash com salt). Difere da
-          turma final (aluno.id_turma) para 9,4% dos alunos avaliados, por mudança
-          de turma ao longo do ano. É a ponte para a escola do registro.
+          Turma do registro no bimestre (hash com salt, convertido para texto).
+          Difere da turma final (aluno.id_turma) para 9,4% dos alunos avaliados,
+          por mudança de turma ao longo do ano. É a ponte para a escola.
+        data_tests:
+          # A turma é a ponte para a escola do registro.
+          - not_null
 
       - name: bimestre
         data_type: int64
         description: >
           Bimestre do ano letivo, de 1 a 4. Convertido de STRING na staging.
+        data_tests:
+          # Um nulo aqui indicaria falha do safe_cast.
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4]
+                quote: false
 
       - name: percentual_frequencia_bimestre
         data_type: float64
         description: >
           Percentual de frequência geral do aluno no bimestre, de 0 a 100.
           Fonte do indicador de absenteísmo crônico. Contém nulos.
+        data_tests:
+          # Base do indicador principal: fora da escala, o absenteísmo é inválido.
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 100
+          # Monitora a completude: 1.734 nulos conhecidos; falha acima de 3.000.
+          - not_null:
+              config:
+                severity: error
+                warn_if: ">0"
+                error_if: ">3000"
 
       - name: nota_portugues
         data_type: float64
         description: >
           Nota de Língua Portuguesa, de 0 a 10, com ruído de ±0,2 da anonimização.
-          Nula quando não lançada (cerca de 16% das linhas); nulo não equivale a zero.
+          Nula quando não lançada (cerca de 16% das linhas); nulo não é zero.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 10
 
       - name: nota_ciencias
         data_type: float64
         description: >
           Nota de Ciências, de 0 a 10, com ruído de ±0,2 da anonimização.
-          Nula quando não lançada (cerca de 16% das linhas); nulo não equivale a zero.
+          Nula quando não lançada (cerca de 16% das linhas); nulo não é zero.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 10
 
       - name: nota_ingles
         data_type: float64
         description: >
           Nota de Língua Estrangeira (Inglês). 100% nula na carga atual; mantida
           para espelhar a fonte e excluída das análises de desempenho.
+        data_tests:
+          # Vigia a premissa: se surgirem notas de Inglês, o escopo muda.
+          - dbt_expectations.expect_column_values_to_be_null:
+              config:
+                severity: warn
 
       - name: nota_matematica
         data_type: float64
         description: >
           Nota de Matemática, de 0 a 10, com ruído de ±0,2 da anonimização.
-          Nula quando não lançada (cerca de 16% das linhas); nulo não equivale a zero.
+          Nula quando não lançada (cerca de 16% das linhas); nulo não é zero.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 10
