@@ -266,3 +266,141 @@ models:
           - not_null:
               config:
                 severity: error
+              
+  # Frequência por aluno, turma, disciplina e período
+  - name: stg_educacao__frequencias
+    description: >
+      Staging da tabela frequencia: um registro por aluno, turma, disciplina e
+      período de apuração. Cobertura efetiva de 05/02 a 17/07. Remove apenas
+      linhas idênticas (1.483). O vínculo aluno -> turma desta tabela não
+      corresponde ao de alunos e avaliacoes: usar apenas o mapa turma -> escola
+      e agregados por turma ou escola, nunca ligações por aluno.
+    data_tests:
+      # Unicidade: só monitora os conflitos conhecidos (mesma chave com valores
+      # diferentes); a garantia fica na intermediate.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - id_aluno
+              - id_turma
+              - disciplina
+              - data_inicio
+              - data_fim
+          config:
+            severity: warn
+      # Período invertido daria duração negativa e quebraria a ponderação.
+      # Início igual ao fim é válido (período de um dia).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "data_fim >= data_inicio"
+      # Premissa de ano letivo único (mesma da stg_educacao__turmas).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              extract(year from data_inicio) = 2000
+              and extract(year from data_fim) = 2000
+    columns:
+      - name: id_aluno
+        data_type: string
+        description: >
+          Identificador anonimizado do aluno em hexadecimal (34 caracteres).
+          O identificador existe no cadastro, mas o vínculo com a turma nesta
+          tabela foi embaralhado na anonimização: não usar para ligar a
+          frequência a alunos ou avaliações.
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_value_lengths_to_equal:
+              arguments:
+                value: 34
+          # Integridade dos identificadores (não do vínculo aluno -> turma).
+          - relationships:
+              arguments:
+                to: ref('stg_educacao__alunos')
+                field: id_aluno
+
+      - name: id_turma
+        data_type: string
+        description: >
+          Turma do registro (hash com salt, convertido para texto). Base do
+          mapa turma -> escola.
+        data_tests:
+          - not_null
+
+      - name: id_escola
+        data_type: string
+        description: >
+          Escola da turma (hash com salt, convertido para texto). Cada turma
+          tem sempre a mesma escola nesta tabela.
+        data_tests:
+          - not_null
+          # Sem isso, o mapa turma -> escola levaria a escolas inexistentes.
+          - relationships:
+              arguments:
+                to: ref('stg_educacao__escolas')
+                field: id_escola
+
+      - name: disciplina
+        data_type: string
+        description: >
+          Código da disciplina, como na fonte (disciplina_1 a disciplina_4).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - disciplina_1
+                  - disciplina_2
+                  - disciplina_3
+                  - disciplina_4
+
+      - name: nome_disciplina
+        data_type: string
+        description: >
+          Nome legível da disciplina (portugues, ciencias, ingles, matematica),
+          no mesmo padrão das colunas de nota de stg_educacao__avaliacoes.
+        data_tests:
+          # O CASE não tem else: nulo indica um código novo não mapeado.
+          - not_null
+
+      - name: indice_frequencia_fonte
+        data_type: float64
+        description: >
+          Índice calculado pela fonte como 100 - (faltas / dias letivos), sem o
+          fator 100. Não é percentual de presença: valores entre 97,3 e 100
+          (mediana 100). O corte de 75% não se aplica.
+        data_tests:
+          # Limite lógico da fórmula (a escala observada de 97 a 100 só é
+          # documentada, para não fixar um limite arbitrário).
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 100
+
+      - name: faltas_por_dia_letivo
+        data_type: float64
+        description: >
+          Faltas por dia letivo no período (100 - indice_frequencia_fonte).
+          Pode passar de 1 porque as faltas parecem contadas em aulas. Índice
+          relativo: serve para comparar, não tem limiar absoluto.
+
+      - name: duracao_periodo_dias
+        data_type: int64
+        description: >
+          Duração do período em dias corridos, inclusiva (fim - início + 1).
+          Peso para agregar períodos de durações diferentes.
+
+      - name: data_inicio
+        data_type: date
+        description: >
+          Início do período de apuração. Ano anonimizado para 2000; dia e mês
+          preservados.
+        data_tests:
+          # Nulo indica falha do safe.parse_date.
+          - not_null
+
+      - name: data_fim
+        data_type: date
+        description: >
+          Fim do período de apuração. Ano anonimizado para 2000; dia e mês
+          preservados.
+        data_tests:
+          - not_null
