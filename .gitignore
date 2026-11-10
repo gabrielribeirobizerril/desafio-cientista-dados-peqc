@@ -11,5 +11,4 @@ dbt_internal_packages/
 .vscode/
 notas/progresso-e-achados.md
 claude_outputs/
-claude_outputs/
 /Claude outputs
