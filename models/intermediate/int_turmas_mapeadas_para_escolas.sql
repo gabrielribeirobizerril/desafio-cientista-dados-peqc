@@ -1,9 +1,7 @@
--- Mapa turma -> escola -> bairro da escola.
--- A escola de cada turma vem da frequência (única tabela com id_escola).
--- Premissa: cada turma pertence a uma única escola (testada na staging).
-
 with
 
+-- A escola de cada turma vem da frequência (única tabela com id_escola).
+-- Cada turma pertence a uma única escola (testado na staging).
 frequencias as (
 
     select distinct
@@ -20,6 +18,8 @@ escolas as (
 
 ),
 
+-- Left join: uma escola ausente do cadastro não elimina a turma do mapa
+-- (o teste not_null de bairro_escola acusa o caso).
 turmas_com_escola as (
 
     select

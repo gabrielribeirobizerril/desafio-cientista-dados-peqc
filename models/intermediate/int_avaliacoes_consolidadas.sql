@@ -1,45 +1,60 @@
 with
 
 avaliacoes as (
+
     select * from {{ ref('stg_educacao__avaliacoes') }}
+
 ),
 
 turmas_finais as (
+
     select
         id_aluno,
         id_turma as id_turma_final
+
     from {{ ref('stg_educacao__turmas') }}
+
 ),
 
 mapa as (
+
     select * from {{ ref('int_turmas_mapeadas_para_escolas') }}
+
 ),
 
+-- Uma linha por aluno + turma + bimestre. Regra de consolidação nas macros
+-- consolidar_valor e possui_conflito. nota_ingles fica fora do conflito de
+-- notas por ser 100% nula.
 consolidado as (
+
     select
         id_aluno,
         id_turma,
         bimestre,
 
-        if(count(distinct percentual_frequencia_bimestre) <= 1, max(percentual_frequencia_bimestre), null) as percentual_frequencia_bimestre,
-        if(count(distinct nota_portugues) <= 1, max(nota_portugues), null) as nota_portugues,
-        if(count(distinct nota_ciencias) <= 1, max(nota_ciencias), null) as nota_ciencias,
-        if(count(distinct nota_ingles) <= 1, max(nota_ingles), null) as nota_ingles,
-        if(count(distinct nota_matematica) <= 1, max(nota_matematica), null) as nota_matematica,
+        {{ consolidar_valor('percentual_frequencia_bimestre') }} as percentual_frequencia_bimestre,
+        {{ consolidar_valor('nota_portugues') }} as nota_portugues,
+        {{ consolidar_valor('nota_ciencias') }} as nota_ciencias,
+        {{ consolidar_valor('nota_ingles') }} as nota_ingles,
+        {{ consolidar_valor('nota_matematica') }} as nota_matematica,
 
         count(*) as qtd_linhas_origem,
-        count(distinct percentual_frequencia_bimestre) > 1 as possui_conflito_frequencia,
+        {{ possui_conflito('percentual_frequencia_bimestre') }} as possui_conflito_frequencia,
         (
-            count(distinct nota_portugues) > 1
-            or count(distinct nota_ciencias) > 1
-            or count(distinct nota_matematica) > 1
+            {{ possui_conflito('nota_portugues') }}
+            or {{ possui_conflito('nota_ciencias') }}
+            or {{ possui_conflito('nota_matematica') }}
         ) as possui_conflito_nota
 
     from avaliacoes
     group by id_aluno, id_turma, bimestre
+
 ),
 
+-- Left joins: turmas fora do mapa ficam com escola nula (cobertura ~81%),
+-- sem perder a avaliação.
 final as (
+
     select
         consolidado.id_aluno,
         consolidado.id_turma,
@@ -63,6 +78,7 @@ final as (
         on consolidado.id_turma = mapa.id_turma
     left join turmas_finais
         on consolidado.id_aluno = turmas_finais.id_aluno
+
 )
 
 select * from final

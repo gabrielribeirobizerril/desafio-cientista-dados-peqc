@@ -9,9 +9,9 @@ data_tests:
       que as fontes deixaram de concordar, e a regra da turma final da
       intermediate passaria a depender de qual tabela fosse usada.
 
-  - name: regra_atribuicao_turma_final
+  - name: reconciliacao_pares_aluno_bimestre
     description: >
-      Quando o aluno foi avaliado em mais de uma turma no mesmo bimestre e a
-      atribuição não é indeterminada, a turma atribuída deve ser a turma final
-      do aluno (stg_educacao__turmas). Protege a regra de atribuição de
-      int_avaliacoes_por_aluno_bimestre contra alterações acidentais.
+      Reconciliação entre camadas: int_avaliacoes_por_aluno_bimestre deve ter
+      exatamente os mesmos pares aluno + bimestre de
+      int_avaliacoes_consolidadas, nem a mais nem a menos. Garante que a regra
+      de atribuição marca os conflitos em vez de descartar linhas.

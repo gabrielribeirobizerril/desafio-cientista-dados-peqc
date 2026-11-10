@@ -1,6 +1,8 @@
 version: 2
 
 models:
+
+  # Mapa turma -> escola -> bairro
   - name: int_turmas_mapeadas_para_escolas
     description: >
       Mapa turma -> escola -> bairro da escola: uma linha por turma (5.516).
@@ -10,14 +12,15 @@ models:
       é usado; o vínculo aluno -> turma daquela tabela não é confiável.
       Validado com evidência independente: 67% das mudanças de turma na
       avaliação ficam na mesma escola segundo este mapa, contra 0,05% esperado
-      ao acaso. Cobre 81,3% dos registros de avaliação.
+      ao acaso. Cobre 521 das 1.558 escolas, 135 dos 169 bairros e 81,3% dos
+      registros de avaliação.
     columns:
       - name: id_turma
         data_type: string
         description: Chave do model. Turma (hash com salt, em texto).
         data_tests:
           # Chave primária. A unicidade garante que o join com este mapa
-          # nunca multiplica linhas (um registro em duas escolas).
+          # nunca multiplica linhas (uma turma em duas escolas).
           - unique
           - not_null
 
@@ -39,108 +42,347 @@ models:
           # Nulo indicaria escola ausente do cadastro (órfã no left join).
           - not_null
 
+  # Avaliações consolidadas por aluno + turma + bimestre
   - name: int_avaliacoes_consolidadas
     description: >
       Uma linha por aluno + turma + bimestre. As 31 chaves duplicadas da fonte
-      são consolidadas coluna a coluna: se os valores não nulos coincidem, mantém
-      o valor; se divergem, a coluna fica nula e a flag de conflito correspondente
-      é marcada. Escola e bairro vêm do mapa turma→escola (left join, cobertura
-      de ~81% das linhas). eh_turma_final compara a turma da avaliação com a turma
-      final do aluno (base para o indicador de mobilidade).
+      são consolidadas coluna a coluna (macros consolidar_valor e
+      possui_conflito): se os valores não nulos coincidem, mantém o valor; se
+      divergem, a coluna fica nula e a flag de conflito correspondente é
+      marcada. Escola e bairro vêm do mapa turma -> escola (left join,
+      cobertura de ~81% das linhas). Base dos indicadores por turma, escola,
+      bairro e mobilidade.
     data_tests:
+      # Chave do model: a consolidação existe para garanti-la, então uma
+      # duplicata aqui é bug do model (na staging era só monitorada).
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [id_aluno, id_turma, bimestre]
           config:
             severity: error
+      # Reconciliação com a origem: nenhuma linha da staging perdida ou
+      # contada duas vezes. Junto com a unicidade da chave, cobre os dois lados.
       - compara_linhas_com_origem:
           arguments:
             origem: ref('stg_educacao__avaliacoes')
             coluna_contagem: qtd_linhas_origem
+      # Coerência interna da regra de consolidação (mesmos testes de
+      # int_frequencias_consolidadas).
+      - dbt_utils.expression_is_true:
+          name: avaliacoes_conflito_frequencia_implica_valor_nulo
+          arguments:
+            expression: "not possui_conflito_frequencia or percentual_frequencia_bimestre is null"
+      - dbt_utils.expression_is_true:
+          name: avaliacoes_conflito_nota_implica_nota_nula
+          arguments:
+            expression: >
+              not possui_conflito_nota
+              or nota_portugues is null
+              or nota_ciencias is null
+              or nota_matematica is null
+      - dbt_utils.expression_is_true:
+          name: avaliacoes_conflito_so_em_linha_consolidada
+          arguments:
+            expression: "foi_consolidado or not (possui_conflito_nota or possui_conflito_frequencia)"
     columns:
       - name: id_aluno
+        data_type: string
+        description: Aluno (hexadecimal, 34 caracteres).
         data_tests:
           - not_null
           - relationships:
               arguments:
                 to: ref('stg_educacao__alunos')
                 field: id_aluno
+
       - name: id_turma
+        data_type: string
+        description: Turma em que o aluno foi avaliado no bimestre.
         data_tests:
           - not_null
-      - name: bimestre
-        data_tests:
-          - not_null
-      - name: id_turma_final
-        data_tests:
-          - not_null
+
       - name: id_escola
-        description: Nulo quando a turma não aparece no mapa turma→escola.
+        data_type: string
+        description: >
+          Escola da turma, pelo mapa turma -> escola. Nulo quando a turma não
+          aparece no mapa (~19% das linhas). Sem teste de not_null por
+          construção; a cobertura é documentada.
 
+      - name: bairro_escola
+        data_type: string
+        description: Hash do bairro da escola. Nulo nas mesmas linhas de id_escola.
 
+      - name: id_turma_final
+        data_type: string
+        description: Turma final do aluno (stg_educacao__turmas).
+        data_tests:
+          # Todo aluno avaliado tem turma final; nulo indicaria falha no join.
+          - not_null
+
+      - name: bimestre
+        data_type: int64
+        description: Bimestre do ano letivo (1 a 4).
+        data_tests:
+          - not_null
+
+      - name: percentual_frequencia_bimestre
+        data_type: float64
+        description: >
+          Frequência geral do aluno no bimestre (0 a 100). Nula se ausente na
+          fonte ou se a chave tinha valores divergentes.
+
+      - name: nota_portugues
+        data_type: float64
+        description: Nota de 0 a 10. Nula se ausente ou em conflito.
+
+      - name: nota_ciencias
+        data_type: float64
+        description: Nota de 0 a 10. Nula se ausente ou em conflito.
+
+      - name: nota_ingles
+        data_type: float64
+        description: 100% nula na carga atual.
+
+      - name: nota_matematica
+        data_type: float64
+        description: Nota de 0 a 10. Nula se ausente ou em conflito.
+
+      - name: qtd_linhas_origem
+        data_type: int64
+        description: Linhas da staging consolidadas nesta linha (1 = sem duplicata).
+
+      - name: foi_consolidado
+        data_type: boolean
+        description: Verdadeiro quando qtd_linhas_origem > 1.
+
+      - name: possui_conflito_nota
+        data_type: boolean
+        description: >
+          Verdadeiro quando a chave tinha notas divergentes em português,
+          ciências ou matemática; a nota em conflito foi anulada.
+
+      - name: possui_conflito_frequencia
+        data_type: boolean
+        description: >
+          Verdadeiro quando a chave tinha frequências divergentes; a frequência
+          foi anulada.
+
+      - name: eh_turma_final
+        data_type: boolean
+        description: >
+          Verdadeiro quando a turma da avaliação é a turma final do aluno.
+
+  # Avaliações por aluno + bimestre
   - name: int_avaliacoes_por_aluno_bimestre
     description: >
-      Uma linha por aluno + bimestre. Quando o aluno foi avaliado em mais de uma
-      turma no mesmo bimestre, adota a turma final; se nenhuma delas é a final,
-      a linha é mantida com turma_indeterminada = true e valores nulos. Única
-      fonte da regra de atribuição de turma: marts por aluno e faixa etária leem
-      daqui, nunca reimplementam a regra.
+      Uma linha por aluno + bimestre (todos os pares de
+      int_avaliacoes_consolidadas). Regra de atribuição de turma: só se
+      atribui quando um único registro carrega informação: (1) turma única;
+      (2) várias turmas e só uma com nota; ou (3) nenhuma com nota e só uma
+      com frequência. Nos demais casos (notas em mais de uma turma, ou
+      nenhuma nota e frequência em mais de uma turma) a turma, a escola, as
+      notas e a frequência ficam nulas e possui_conflito_turma = true (283
+      pares na carga atual; outros 255 pares em várias turmas foram
+      atribuídos pelos critérios 2 e 3). Nunca se calcula média entre turmas.
+      A origem dos registros em várias turmas (transferência, recodificação
+      ou erro) não é identificável com os dados disponíveis. Única fonte
+      desta regra: os marts filtram `not possui_conflito_turma` nos
+      indicadores de desempenho e absenteísmo e nunca a reimplementam.
     data_tests:
+      # Granularidade descrita no enunciado. Falhava na staging (só
+      # monitorada); aqui é garantida pelo group by da regra de atribuição.
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [id_aluno, bimestre]
           config:
             severity: error
+      # Coerência da regra: há conflito exatamente quando existe mais de uma
+      # turma e nenhum dos critérios 2 e 3 se aplica.
       - dbt_utils.expression_is_true:
-          name: indeterminacao_so_com_mais_de_uma_turma
+          name: conflito_turma_coerente_com_regra
           arguments:
-            expression: "not turma_indeterminada or qtd_turmas_no_bimestre > 1"
+            expression: >
+              possui_conflito_turma
+              = (
+                  qtd_turmas_no_bimestre > 1
+                  and qtd_turmas_com_nota != 1
+                  and not (qtd_turmas_com_nota = 0 and qtd_turmas_com_frequencia = 1)
+              )
+      # Atribuição pelos critérios 2 e 3: o left join precisa trazer a nota
+      # ou a frequência. Nulo aqui indicaria falha silenciosa do join.
+      - dbt_utils.expression_is_true:
+          name: atribuicao_por_desempate_traz_informacao
+          arguments:
+            expression: >
+              possui_conflito_turma
+              or qtd_turmas_no_bimestre = 1
+              or coalesce(nota_portugues, nota_ciencias, nota_matematica,
+                          percentual_frequencia_bimestre) is not null
     columns:
       - name: id_aluno
+        data_type: string
+        description: Aluno (hexadecimal, 34 caracteres).
         data_tests:
           - not_null
+
       - name: bimestre
+        data_type: int64
+        description: Bimestre do ano letivo (1 a 4).
         data_tests:
           - not_null
+
       - name: id_turma_atribuida
-        description: Nulo apenas quando turma_indeterminada = true.
+        data_type: string
+        description: >
+          Turma escolhida pela regra de atribuição. Nula se e somente se
+          possui_conflito_turma.
 
+      - name: possui_conflito_turma
+        data_type: boolean
+        description: >
+          Verdadeiro quando o aluno aparece em mais de uma turma no bimestre
+          com valores concorrentes e não há turma atribuída. Linhas com true
+          ficam fora dos indicadores de desempenho e absenteísmo.
+        data_tests:
+          - not_null
 
+      - name: id_escola
+        data_type: string
+        description: >
+          Escola da turma atribuída. Nula quando a turma não está no mapa ou
+          quando possui_conflito_turma.
+
+      - name: bairro_escola
+        data_type: string
+        description: Hash do bairro da escola. Nulo nas mesmas linhas de id_escola.
+
+      - name: percentual_frequencia_bimestre
+        data_type: float64
+        description: Frequência geral do aluno no bimestre, na turma atribuída.
+
+      - name: nota_portugues
+        data_type: float64
+        description: Nota na turma atribuída.
+
+      - name: nota_ciencias
+        data_type: float64
+        description: Nota na turma atribuída.
+
+      - name: nota_ingles
+        data_type: float64
+        description: 100% nula na carga atual.
+
+      - name: nota_matematica
+        data_type: float64
+        description: Nota na turma atribuída.
+
+      - name: qtd_turmas_no_bimestre
+        data_type: int64
+        description: Turmas em que o aluno foi avaliado no bimestre.
+
+      - name: qtd_turmas_com_nota
+        data_type: int64
+        description: Dessas turmas, quantas têm ao menos uma nota (português, ciências ou matemática).
+
+      - name: qtd_turmas_com_frequencia
+        data_type: int64
+        description: Dessas turmas, quantas têm percentual_frequencia_bimestre não nulo.
+
+      - name: possui_multiplas_turmas_no_bimestre
+        data_type: boolean
+        description: >
+          Verdadeiro quando qtd_turmas_no_bimestre > 1. Descreve o fato
+          observado, sem afirmar a causa. Base da contagem descritiva.
+
+  # Frequências consolidadas por aluno + turma + disciplina + período
   - name: int_frequencias_consolidadas
     description: >
       Uma linha por aluno + turma + disciplina + período. Chaves repetidas na
       fonte com valores divergentes têm a medida anulada e
-      possui_conflito_frequencia = true (mesma regra de int_avaliacoes_consolidadas).
-      O vínculo aluno→turma desta fonte não é confiável (11 de 97.044 alunos
-      coincidem com a turma final); usar para agregações por turma, escola,
-      disciplina e período, não por aluno.
+      possui_conflito_frequencia = true (mesma regra de
+      int_avaliacoes_consolidadas, pelas macros consolidar_valor e
+      possui_conflito). O vínculo aluno -> turma desta fonte não é confiável
+      (11 de 97.044 alunos coincidem com a turma final); usar para agregações
+      por turma, escola, disciplina e período, não por aluno.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [id_aluno, id_turma, disciplina, data_inicio, data_fim]
           config:
             severity: error
-      - dbt_utils.expression_is_true:
-          name: conflito_frequencia_implica_valor_nulo
-          arguments:
-            expression: "not possui_conflito_frequencia or indice_frequencia_fonte is null"
       - compara_linhas_com_origem:
           arguments:
             origem: ref('stg_educacao__frequencias')
             coluna_contagem: qtd_linhas_origem
+      - dbt_utils.expression_is_true:
+          name: frequencias_conflito_implica_valor_nulo
+          arguments:
+            expression: "not possui_conflito_frequencia or indice_frequencia_fonte is null"
+      - dbt_utils.expression_is_true:
+          name: frequencias_conflito_so_em_linha_consolidada
+          arguments:
+            expression: "foi_consolidado or not possui_conflito_frequencia"
     columns:
       - name: id_aluno
+        data_type: string
+        description: Aluno (hexadecimal). Não usar para análises por aluno.
         data_tests:
           - not_null
+
       - name: id_turma
+        data_type: string
+        description: Turma do registro de frequência.
         data_tests:
           - not_null
+
       - name: id_escola
+        data_type: string
+        description: Escola da turma.
         data_tests:
           - not_null
+
       - name: disciplina
+        data_type: string
+        description: Código da disciplina na fonte (disciplina_1 a disciplina_4).
         data_tests:
           - not_null
+
+      - name: nome_disciplina
+        data_type: string
+        description: Nome da disciplina (portugues, ciencias, ingles, matematica).
+
       - name: data_inicio
+        data_type: date
+        description: Início do período de apuração (ano anonimizado para 2000).
         data_tests:
           - not_null
+
+      - name: data_fim
+        data_type: date
+        description: Fim do período de apuração.
+
+      - name: duracao_periodo_dias
+        data_type: int64
+        description: Duração inclusiva do período, base da ponderação.
+
+      - name: indice_frequencia_fonte
+        data_type: float64
+        description: >
+          Índice da fonte (100 - faltas / dias letivos). Nulo se a chave tinha
+          valores divergentes.
+
+      - name: faltas_por_dia_letivo
+        data_type: float64
+        description: Faltas por dia letivo (fórmula na staging). Nula em conflito.
+
+      - name: qtd_linhas_origem
+        data_type: int64
+        description: Linhas da staging consolidadas nesta linha (1 = sem duplicata).
+
+      - name: foi_consolidado
+        data_type: boolean
+        description: Verdadeiro quando qtd_linhas_origem > 1.
+
+      - name: possui_conflito_frequencia
+        data_type: boolean
+        description: Verdadeiro quando a chave tinha valores divergentes; a medida foi anulada.

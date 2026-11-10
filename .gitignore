@@ -1,14 +1,24 @@
+# Ambiente e artefatos do dbt
 .venv
 target/
 dbt_packages/
+dbt_internal_packages/
 logs/
+
+# Segredos. *.json é amplo de propósito: impede que uma chave de service
+# account entre no repositório por engano. Para versionar um JSON legítimo,
+# adicionar uma exceção explícita (ex.: !caminho/arquivo.json).
 .env
 *.json
-dbt_internal_packages/
+
+# Notebooks de trabalho (o EDA final entrará como exceção explícita)
 *.ipynb
 
-
+# Editor
 .vscode/
-notas/progresso-e-achados.md
-claude_outputs/
+
+# Notas de tutoria (fora do repositório)
 /Claude outputs
+# Cópias antigas das notas (remover estas linhas depois de apagar as pastas)
+claude_outputs/
+notas/progresso-e-achados.md
