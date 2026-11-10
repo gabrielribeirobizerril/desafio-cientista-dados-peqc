@@ -53,6 +53,10 @@ models:
             combination_of_columns: [id_aluno, id_turma, bimestre]
           config:
             severity: error
+      - compara_linhas_com_origem:
+          arguments:
+            origem: ref('stg_educacao__avaliacoes')
+            coluna_contagem: qtd_linhas_origem
     columns:
       - name: id_aluno
         data_tests:
@@ -120,6 +124,10 @@ models:
           name: conflito_frequencia_implica_valor_nulo
           arguments:
             expression: "not possui_conflito_frequencia or indice_frequencia_fonte is null"
+      - compara_linhas_com_origem:
+          arguments:
+            origem: ref('stg_educacao__frequencias')
+            coluna_contagem: qtd_linhas_origem
     columns:
       - name: id_aluno
         data_tests:

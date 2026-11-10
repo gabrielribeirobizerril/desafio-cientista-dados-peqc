@@ -8,3 +8,10 @@ data_tests:
       Confirmado em 100% dos alunos no perfilamento. Uma divergência indicaria
       que as fontes deixaram de concordar, e a regra da turma final da
       intermediate passaria a depender de qual tabela fosse usada.
+
+  - name: regra_atribuicao_turma_final
+    description: >
+      Quando o aluno foi avaliado em mais de uma turma no mesmo bimestre e a
+      atribuição não é indeterminada, a turma atribuída deve ser a turma final
+      do aluno (stg_educacao__turmas). Protege a regra de atribuição de
+      int_avaliacoes_por_aluno_bimestre contra alterações acidentais.
