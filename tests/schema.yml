@@ -1,0 +1,10 @@
+version: 2
+
+data_tests:
+  - name: regra_turma_final_consistente
+    description: >
+      Regra de negócio: a turma final de cada aluno deve ser a mesma em
+      stg_educacao__alunos e stg_educacao__turmas (as duas fontes do vínculo).
+      Confirmado em 100% dos alunos no perfilamento. Uma divergência indicaria
+      que as fontes deixaram de concordar, e a regra da turma final da
+      intermediate passaria a depender de qual tabela fosse usada.

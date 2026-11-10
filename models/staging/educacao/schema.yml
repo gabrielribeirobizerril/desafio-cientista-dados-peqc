@@ -1,0 +1,425 @@
+version: 2
+
+models:
+
+  # Base de registro das avaliações
+  - name: stg_educacao__avaliacoes
+    description: >
+      Staging da tabela avaliacao: um registro por aluno, turma e bimestre
+      (um aluno transferido durante o bimestre tem um registro em cada turma).
+      Renomeia colunas, padroniza id_aluno (hex) e id_turma (texto), converte
+      bimestre para inteiro e remove apenas linhas idênticas. Restam 31 chaves
+      duplicadas, consolidadas na camada intermediate.
+    data_tests:
+      # Unicidade da chave: só monitora (31 duplicatas conhecidas na fonte).
+      # A unicidade é garantida na intermediate, com severity error.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - id_aluno
+              - id_turma
+              - bimestre
+          config:
+            severity: warn
+      # Granularidade descrita no enunciado (aluno + bimestre): só monitora.
+      # As violações são alunos com registro em mais de uma turma no bimestre
+      # (além das 31 duplicatas da chave completa). Vira error na intermediate
+      # por aluno.
+      - dbt_utils.unique_combination_of_columns:
+          name: avaliacoes_granularidade_do_enunciado
+          arguments:
+            combination_of_columns:
+              - id_aluno
+              - bimestre
+          config:
+            severity: warn
+    columns:
+      - name: id_aluno
+        data_type: string
+        description: >
+          Identificador anonimizado do aluno em hexadecimal (34 caracteres),
+          padronizado pela macro formatar_id_aluno. Todos existem em aluno.
+        data_tests:
+          # Sem aluno, o registro não se liga a nada.
+          - not_null
+          # Garante que a macro funcionou; outro tamanho indicaria mudança no
+          # hash da fonte e faria os joins falharem em silêncio.
+          - dbt_expectations.expect_column_value_lengths_to_equal:
+              arguments:
+                value: 34
+          # Integridade referencial: toda avaliação pertence a um aluno existente.
+          - relationships:
+              arguments:
+                to: ref('stg_educacao__alunos')
+                field: id_aluno
+
+      - name: id_turma
+        data_type: string
+        description: >
+          Turma do registro no bimestre (hash com salt, convertido para texto).
+          Difere da turma final (aluno.id_turma) para 9,4% dos alunos avaliados,
+          por mudança de turma ao longo do ano. É a ponte para a escola.
+        data_tests:
+          # A turma é a ponte para a escola do registro.
+          - not_null
+
+      - name: bimestre
+        data_type: int64
+        description: >
+          Bimestre do ano letivo, de 1 a 4. Convertido de STRING na staging.
+        data_tests:
+          # Um nulo aqui indicaria falha do safe_cast.
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4]
+                quote: false
+
+      - name: percentual_frequencia_bimestre
+        data_type: float64
+        description: >
+          Percentual de frequência geral do aluno no bimestre, de 0 a 100.
+          Fonte do indicador de absenteísmo crônico. Contém nulos.
+        data_tests:
+          # Base do indicador principal: fora da escala, o absenteísmo é inválido.
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 100
+          # Completude em proporção (independe do tamanho da base): com mais de
+          # 5% de nulos, o absenteísmo deixa de representar a rede.
+          # Hoje: 1.734 nulos em 221.684 linhas (0,78%).
+          - dbt_utils.not_null_proportion:
+              arguments:
+                at_least: 0.95
+
+      - name: nota_portugues
+        data_type: float64
+        description: >
+          Nota de Língua Portuguesa, de 0 a 10, com ruído de ±0,2 da anonimização.
+          Nula quando não lançada (cerca de 16% das linhas); nulo não é zero.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 10
+
+      - name: nota_ciencias
+        data_type: float64
+        description: >
+          Nota de Ciências, de 0 a 10, com ruído de ±0,2 da anonimização.
+          Nula quando não lançada (cerca de 16% das linhas); nulo não é zero.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 10
+
+      - name: nota_ingles
+        data_type: float64
+        description: >
+          Nota de Língua Estrangeira (Inglês). 100% nula na carga atual; mantida
+          para espelhar a fonte e excluída das análises de desempenho.
+        data_tests:
+          # Vigia a premissa: se surgirem notas de Inglês, o escopo muda.
+          - dbt_expectations.expect_column_values_to_be_null:
+              config:
+                severity: warn
+
+      - name: nota_matematica
+        data_type: float64
+        description: >
+          Nota de Matemática, de 0 a 10, com ruído de ±0,2 da anonimização.
+          Nula quando não lançada (cerca de 16% das linhas); nulo não é zero.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 10
+
+  # Base cadastral de alunos
+  - name: stg_educacao__alunos
+    description: >
+      Staging da tabela aluno: um registro por aluno (97.044). Padroniza
+      id_aluno (hex) e id_turma (texto), trata o bairro como categoria e
+      cria a ordem das faixas etárias.
+    columns:
+      - name: id_aluno
+        data_type: string
+        description: >
+          Chave do model. Identificador anonimizado do aluno em hexadecimal
+          (34 caracteres), padronizado pela macro formatar_id_aluno.
+        data_tests:
+          # Chave primária.
+          - unique
+          - not_null
+          # Mesma regra das demais tabelas; outro tamanho quebraria os joins.
+          - dbt_expectations.expect_column_value_lengths_to_equal:
+              arguments:
+                value: 34
+
+      - name: id_turma
+        data_type: string
+        description: >
+          Turma final do aluno no ano letivo (hash com salt, convertido para
+          texto). Para a turma de cada bimestre, usar avaliacoes.id_turma.
+        data_tests:
+          - not_null
+
+      - name: faixa_etaria
+        data_type: string
+        description: >
+          Faixa etária derivada da idade atual do aluno, e não da idade no ano
+          letivo. Distribuição implausível para uma rede municipal (51,5% com
+          15-17 anos); usar com ressalva.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['0-5', '6-10', '11-14', '15-17', '18+']
+
+      - name: bairro_residencia
+        data_type: string
+        description: >
+          Hash do bairro de residência, tratado como categoria. 1.069 valores
+          para cerca de 160 bairros oficiais (provável texto livre antes do
+          hash); não comparável com o bairro da escola.
+        data_tests:
+          # Só monitora (68 nulos conhecidos): a coluna não alimenta nenhuma
+          # análise, então nenhum volume de nulos justifica parar o pipeline.
+          - not_null:
+              config:
+                severity: warn
+
+      - name: ordem_faixa_etaria
+        data_type: int64
+        description: >
+          Ordem das faixas etárias (1 = 0-5 até 5 = 18+), para ordenação correta.
+        data_tests:
+          # Nulo indica uma faixa nova que o CASE não cobre.
+          - not_null
+
+  # Base de cadastro das turmas
+  - name: stg_educacao__turmas
+    description: >
+      Staging da tabela turma: um registro por aluno (e não por turma, como
+      diz o README do desafio), com a turma final do aluno no ano letivo.
+      Redundante com stg_educacao__alunos.id_turma (100% iguais no
+      perfilamento). Não contém série nem turno.
+    columns:
+      - name: id_aluno
+        data_type: string
+        description: >
+          Chave do model. Identificador anonimizado do aluno em hexadecimal
+          (34 caracteres), padronizado pela macro formatar_id_aluno.
+        data_tests:
+          # Chave primária: um registro por aluno.
+          - unique
+          - not_null
+          - dbt_expectations.expect_column_value_lengths_to_equal:
+              arguments:
+                value: 34
+          # Todo aluno do mapeamento existe no cadastro.
+          - relationships:
+              arguments:
+                to: ref('stg_educacao__alunos')
+                field: id_aluno
+
+      - name: id_turma
+        data_type: string
+        description: >
+          Turma final do aluno no ano letivo (hash com salt, convertido para
+          texto).
+        data_tests:
+          - not_null
+
+      - name: ano_letivo
+        data_type: int64
+        description: >
+          Ano letivo anonimizado pelo produtor: constante (2000) em todas as
+          linhas. Sustenta a premissa de que todos os dados são de um único
+          ano letivo.
+        data_tests:
+          # Premissa central: um segundo ano faria bimestres e turma final
+          # misturarem anos diferentes, quebrando os indicadores em silêncio.
+          - accepted_values:
+              arguments:
+                values: [2000]
+                quote: false
+              config:
+                severity: error
+
+  # Cadastro de escolas
+  - name: stg_educacao__escolas
+    description: >
+      Staging da tabela escola: um registro por escola (1.558). Não contém
+      tipo nem região, ao contrário do que diz o README do desafio; a única
+      informação geográfica é o bairro anonimizado.
+    columns:
+      - name: id_escola
+        data_type: string
+        description: >
+          Chave do model. Identificador anonimizado da escola (hash com salt,
+          convertido para texto).
+        data_tests:
+          # Chave primária.
+          - unique
+          - not_null
+
+      - name: bairro_escola
+        data_type: string
+        description: >
+          Hash do bairro da escola, tratado como categoria. 169 valores
+          distintos, compatível com os cerca de 160 bairros oficiais do Rio.
+          Unidade geográfica da análise. Não comparável com
+          alunos.bairro_residencia nem com datario.dados_mestres.bairro.
+        data_tests:
+          # Unidade geográfica da análise: uma escola sem bairro sairia da
+          # análise regional em silêncio. Hoje 100% preenchido, então o
+          # primeiro nulo indica mudança na fonte.
+          - not_null:
+              config:
+                severity: error
+              
+  # Frequência por aluno, turma, disciplina e período
+  - name: stg_educacao__frequencias
+    description: >
+      Staging da tabela frequencia: um registro por aluno, turma, disciplina e
+      período de apuração. Cobertura efetiva de 05/02 a 17/07. Remove apenas
+      linhas idênticas (1.483). O vínculo aluno -> turma desta tabela não
+      corresponde ao de alunos e avaliacoes: usar apenas o mapa turma -> escola
+      e agregados por turma ou escola, nunca ligações por aluno.
+    data_tests:
+      # Unicidade: só monitora os conflitos conhecidos (mesma chave com valores
+      # diferentes); a garantia fica na intermediate.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - id_aluno
+              - id_turma
+              - disciplina
+              - data_inicio
+              - data_fim
+          config:
+            severity: warn
+      # Período invertido daria duração negativa e quebraria a ponderação.
+      # Início igual ao fim é válido (período de um dia).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "data_fim >= data_inicio"
+      # Premissa de ano letivo único (mesma da stg_educacao__turmas).
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              extract(year from data_inicio) = 2000
+              and extract(year from data_fim) = 2000
+    columns:
+      - name: id_aluno
+        data_type: string
+        description: >
+          Identificador anonimizado do aluno em hexadecimal (34 caracteres).
+          O identificador existe no cadastro, mas o vínculo com a turma nesta
+          tabela foi embaralhado na anonimização: não usar para ligar a
+          frequência a alunos ou avaliações.
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_value_lengths_to_equal:
+              arguments:
+                value: 34
+          # Integridade dos identificadores (não do vínculo aluno -> turma).
+          - relationships:
+              arguments:
+                to: ref('stg_educacao__alunos')
+                field: id_aluno
+
+      - name: id_turma
+        data_type: string
+        description: >
+          Turma do registro (hash com salt, convertido para texto). Base do
+          mapa turma -> escola.
+        data_tests:
+          - not_null
+
+      - name: id_escola
+        data_type: string
+        description: >
+          Escola da turma (hash com salt, convertido para texto). Cada turma
+          tem sempre a mesma escola nesta tabela.
+        data_tests:
+          - not_null
+          # Sem isso, o mapa turma -> escola levaria a escolas inexistentes.
+          - relationships:
+              arguments:
+                to: ref('stg_educacao__escolas')
+                field: id_escola
+          # Regra de negócio: cada turma pertence a uma única escola. O mapa
+          # turma -> escola depende disso; se falhar, o join com o mapa
+          # duplicaria registros e atribuiria um aluno a duas escolas.
+          - valor_unico_por_grupo:
+              arguments:
+                agrupar_por: id_turma
+
+      - name: disciplina
+        data_type: string
+        description: >
+          Código da disciplina, como na fonte (disciplina_1 a disciplina_4).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - disciplina_1
+                  - disciplina_2
+                  - disciplina_3
+                  - disciplina_4
+
+      - name: nome_disciplina
+        data_type: string
+        description: >
+          Nome legível da disciplina (portugues, ciencias, ingles, matematica),
+          no mesmo padrão das colunas de nota de stg_educacao__avaliacoes.
+        data_tests:
+          # O CASE não tem else: nulo indica um código novo não mapeado.
+          - not_null
+
+      - name: indice_frequencia_fonte
+        data_type: float64
+        description: >
+          Índice calculado pela fonte como 100 - (faltas / dias letivos), sem o
+          fator 100. Não é percentual de presença: valores entre 97,3 e 100
+          (mediana 100). O corte de 75% não se aplica.
+        data_tests:
+          # Limite lógico da fórmula (a escala observada de 97 a 100 só é
+          # documentada, para não fixar um limite arbitrário).
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 100
+
+      - name: faltas_por_dia_letivo
+        data_type: float64
+        description: >
+          Faltas por dia letivo no período (100 - indice_frequencia_fonte).
+          Pode passar de 1 porque as faltas parecem contadas em aulas. Índice
+          relativo: serve para comparar, não tem limiar absoluto.
+
+      - name: duracao_periodo_dias
+        data_type: int64
+        description: >
+          Duração do período em dias corridos, inclusiva (fim - início + 1).
+          Peso para agregar períodos de durações diferentes.
+
+      - name: data_inicio
+        data_type: date
+        description: >
+          Início do período de apuração. Ano anonimizado para 2000; dia e mês
+          preservados.
+        data_tests:
+          # Nulo indica falha do safe.parse_date.
+          - not_null
+
+      - name: data_fim
+        data_type: date
+        description: >
+          Fim do período de apuração. Ano anonimizado para 2000; dia e mês
+          preservados.
+        data_tests:
+          - not_null
