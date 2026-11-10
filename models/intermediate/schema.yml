@@ -1,0 +1,138 @@
+version: 2
+
+models:
+  - name: int_turmas_mapeadas_para_escolas
+    description: >
+      Mapa turma -> escola -> bairro da escola: uma linha por turma (5.516).
+      A escola vem de stg_educacao__frequencias, única tabela com id_escola;
+      o bairro vem de stg_educacao__escolas (left join, para não perder turmas
+      cuja escola faltasse no cadastro). Só o par turma -> escola da frequência
+      é usado; o vínculo aluno -> turma daquela tabela não é confiável.
+      Validado com evidência independente: 67% das mudanças de turma na
+      avaliação ficam na mesma escola segundo este mapa, contra 0,05% esperado
+      ao acaso. Cobre 81,3% dos registros de avaliação.
+    columns:
+      - name: id_turma
+        data_type: string
+        description: Chave do model. Turma (hash com salt, em texto).
+        data_tests:
+          # Chave primária. A unicidade garante que o join com este mapa
+          # nunca multiplica linhas (um registro em duas escolas).
+          - unique
+          - not_null
+
+      - name: id_escola
+        data_type: string
+        description: Escola à qual a turma pertence.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_educacao__escolas')
+                field: id_escola
+
+      - name: bairro_escola
+        data_type: string
+        description: >
+          Hash do bairro da escola. Unidade geográfica dos indicadores.
+        data_tests:
+          # Nulo indicaria escola ausente do cadastro (órfã no left join).
+          - not_null
+
+  - name: int_avaliacoes_consolidadas
+    description: >
+      Uma linha por aluno + turma + bimestre. As 31 chaves duplicadas da fonte
+      são consolidadas coluna a coluna: se os valores não nulos coincidem, mantém
+      o valor; se divergem, a coluna fica nula e a flag de conflito correspondente
+      é marcada. Escola e bairro vêm do mapa turma→escola (left join, cobertura
+      de ~81% das linhas). eh_turma_final compara a turma da avaliação com a turma
+      final do aluno (base para o indicador de mobilidade).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [id_aluno, id_turma, bimestre]
+          config:
+            severity: error
+    columns:
+      - name: id_aluno
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_educacao__alunos')
+                field: id_aluno
+      - name: id_turma
+        data_tests:
+          - not_null
+      - name: bimestre
+        data_tests:
+          - not_null
+      - name: id_turma_final
+        data_tests:
+          - not_null
+      - name: id_escola
+        description: Nulo quando a turma não aparece no mapa turma→escola.
+
+
+  - name: int_avaliacoes_por_aluno_bimestre
+    description: >
+      Uma linha por aluno + bimestre. Quando o aluno foi avaliado em mais de uma
+      turma no mesmo bimestre, adota a turma final; se nenhuma delas é a final,
+      a linha é mantida com turma_indeterminada = true e valores nulos. Única
+      fonte da regra de atribuição de turma: marts por aluno e faixa etária leem
+      daqui, nunca reimplementam a regra.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [id_aluno, bimestre]
+          config:
+            severity: error
+      - dbt_utils.expression_is_true:
+          name: indeterminacao_so_com_mais_de_uma_turma
+          arguments:
+            expression: "not turma_indeterminada or qtd_turmas_no_bimestre > 1"
+    columns:
+      - name: id_aluno
+        data_tests:
+          - not_null
+      - name: bimestre
+        data_tests:
+          - not_null
+      - name: id_turma_atribuida
+        description: Nulo apenas quando turma_indeterminada = true.
+
+
+  - name: int_frequencias_consolidadas
+    description: >
+      Uma linha por aluno + turma + disciplina + período. Chaves repetidas na
+      fonte com valores divergentes têm a medida anulada e
+      possui_conflito_frequencia = true (mesma regra de int_avaliacoes_consolidadas).
+      O vínculo aluno→turma desta fonte não é confiável (11 de 97.044 alunos
+      coincidem com a turma final); usar para agregações por turma, escola,
+      disciplina e período, não por aluno.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [id_aluno, id_turma, disciplina, data_inicio, data_fim]
+          config:
+            severity: error
+      - dbt_utils.expression_is_true:
+          name: conflito_frequencia_implica_valor_nulo
+          arguments:
+            expression: "not possui_conflito_frequencia or indice_frequencia_fonte is null"
+    columns:
+      - name: id_aluno
+        data_tests:
+          - not_null
+      - name: id_turma
+        data_tests:
+          - not_null
+      - name: id_escola
+        data_tests:
+          - not_null
+      - name: disciplina
+        data_tests:
+          - not_null
+      - name: data_inicio
+        data_tests:
+          - not_null
