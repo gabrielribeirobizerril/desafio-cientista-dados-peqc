@@ -298,7 +298,7 @@ São 159 testes de dados, sendo 154 genéricos e 5 singulares, todos com a justi
 | Intermediate | 64 genéricos e 2 singulares | granularidade, coerência das flags e reconciliação com a origem | unicidade de cada chave com `error`; conflito implica valor nulo, por disciplina; nenhuma linha perdida ou contada duas vezes; mesmos pares aluno + bimestre; uma linha por nota atribuída; registros, períodos e dias preservados ao juntar turmas e agregar |
 | Marts | 45 genéricos | contrato, chaves, faixas e reconciliação | contrato de nomes e tipos; taxas de 0 a 1, médias de 0 a 10; totais de bairro iguais aos de escola e totais de cada mart iguais aos da intermediate |
 
-Além dos testes do dbt, validei a lógica executando os modelos e os testes com dados sintéticos, nos quais acrescentei de propósito os casos de borda (aluno em duas turmas no mesmo período, chave em conflito, frequência nula, numerador zero) e algumas sabotagens, como apagar uma linha ou dobrar os dias de um aluno, para confirmar que cada teste de fato falha quando deveria.
+Além dos testes do dbt, validei a lógica executando os modelos e os testes com dados sintéticos, nos quais acrescentei de propósito os casos de borda (aluno em duas turmas no mesmo período, chave em conflito, frequência nula, numerador zero).
 
 A cada push, o GitHub Actions roda `dbt parse --warn-error`, que lê o projeto inteiro (SQL, YAML, refs, testes e DAG) e reprova qualquer referência quebrada ou configuração inválida, e confere que os scripts e notebooks Python abrem sem erro. O CI não acessa o BigQuery, então não guarda credenciais no repositório; os testes de dados rodam no `dbt build`.
 
@@ -325,7 +325,7 @@ Os dados foram aleatorizados na anonimização, então os números ilustram o m�
   - 156 das 521 escolas não têm nenhum caso.
 - **Absenteísmo por bairro**
   - A taxa varia menos entre bairros (1,1% a 5,9%) do que entre escolas (0% a 7,6%), entre os percentis 10 e 90.
-  - 43 dos 135 bairros têm uma escola só.
+  - 43 (31,9%) dos 135 bairros têm uma escola só.
 - **Absenteísmo por disciplina**
   - Português (10,0%) e Matemática (9,8%) têm quase três vezes a taxa de Ciências (3,4%); Inglês fica em 0,7%.
 - **Desempenho por escola**
@@ -333,14 +333,11 @@ Os dados foram aleatorizados na anonimização, então os números ilustram o m�
   - Entre as escolas, a distância entre os percentis 10 e 90 é de cerca de 1,7 ponto em todas as disciplinas.
   - A correlação entre absenteísmo e média das notas é fraca (−0,26, em 369 escolas).
 - **Desempenho por bairro**
-  - Agregar por bairro reduz a distância entre os percentis 10 e 90 de cerca de 1,7 para 1,3 ponto.
+  - A dispersão das notas entre bairros é menor do que entre escolas (P90 − P10 de aproximadamente 1,3 ponto, contra 1,7);
 - **Desempenho por faixa etária**
   - A faixa de 15 a 17 anos tem as maiores médias e a menor dispersão nas três disciplinas.
   - Só há notas para 11 a 14, 15 a 17 e 18 anos ou mais; a distribuição de faixas da tabela `aluno` é implausível para a rede municipal.
 
-## 9. Limites e próximos passos
-
-O absenteísmo cobre só os períodos que a fonte traz (2000-02-05 a 2000-10-03, concentrados até 2000-07-17) e usa dias corridos como aproximação dos dias letivos. A exclusão dos registros abaixo de 99, a junção das turmas do mesmo período e a exclusão dos períodos compartilhados entre escolas têm efeito medido no indicador, registrado em [analyses/sensibilidade_regras_frequencia.sql](analyses/sensibilidade_regras_frequencia.sql): com as três regras são 3.177 casos em 99.032 vínculos; sem a exclusão dos períodos compartilhados entre escolas, seriam 3.116 casos em 100.640 vínculos; pela regra anterior das turmas, que contava a duração do período uma vez por turma, seriam 3.047 (130 a menos); mantidos os registros abaixo de 99 e as somas acima de 1, seriam 3.412 (+235, ou 7,4%), já que esses são justamente os registros de maior falta. A agregação da frequência por aluno supõe que o `id_aluno` seja estável dentro da `frequencia`, o que os dados sugerem mas não comprovam. Os períodos compartilhados entre escolas ficaram fora do cálculo porque a fonte não informa quantos dias o aluno passou em cada escola; com datas de matrícula, seria possível atribuir a cada vínculo o tempo correspondente. Os 5.002 alunos que mudaram de turma dentro do período (cerca de 5% dos vínculos, em 409 escolas) entram com a regra da soma, sustentada pelos dados, mas não confirmada pelo produtor. Com mais tempo, eu levaria o CI até o `dbt build`, com uma service account de leitura e escrita só nos datasets do projeto, testes unitários das regras de atribuição de turma e de junção das turmas e `freshness` nas sources.
 
 ## Referências
 
