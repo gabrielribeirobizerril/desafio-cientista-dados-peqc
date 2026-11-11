@@ -6,6 +6,14 @@ origem as (
 
 ),
 
+-- Remove linhas idênticas (macro remover_linhas_identicas, aplicada em
+-- todas as stagings).
+deduplicado as (
+
+    {{ remover_linhas_identicas('origem') }}
+
+),
+
 renomeado as (
 
     select
@@ -15,7 +23,7 @@ renomeado as (
         -- categorias
         cast(bairro as string) as bairro_escola
 
-    from origem
+    from deduplicado
 
 )
 

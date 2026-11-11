@@ -6,6 +6,14 @@ origem as (
 
 ),
 
+-- Remove linhas idênticas (macro remover_linhas_identicas, aplicada em
+-- todas as stagings).
+deduplicado as (
+
+    {{ remover_linhas_identicas('origem') }}
+
+),
+
 renomeado as (
 
     select
@@ -26,7 +34,7 @@ renomeado as (
             when '18+' then 5
         end as ordem_faixa_etaria
 
-    from origem
+    from deduplicado
 
 )
 

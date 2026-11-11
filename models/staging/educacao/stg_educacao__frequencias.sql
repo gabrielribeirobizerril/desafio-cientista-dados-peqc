@@ -6,11 +6,29 @@ origem as (
 
 ),
 
--- Remove apenas linhas idênticas em todas as colunas (1.483 no perfilamento).
--- Chaves com valores conflitantes são tratadas na intermediate.
+-- Remove linhas idênticas (macro remover_linhas_identicas, aplicada em
+-- todas as stagings): 1.483 no perfilamento. Chaves com valores
+-- conflitantes são tratadas na intermediate.
 deduplicado as (
 
-    select distinct * from origem
+    {{ remover_linhas_identicas('origem') }}
+
+),
+
+-- Regra de cálculo da fonte (schema.yml do produtor): frequencia =
+-- 100 - (faltas / dias letivos). Abaixo de 99, as faltas passariam do número
+-- de dias letivos. Esses registros (1.857; 0,07%) são excluídos.
+-- Nulos são mantidos como nulos (ausência de informação, não registro
+-- inválido) e monitorados na source; a intermediate os exclui do cálculo de
+-- forma explícita.
+-- Coluna qualificada pela CTE: no GoogleSQL, "frequencia" sozinho pode ser
+-- lido como a linha inteira de uma tabela com o mesmo nome.
+filtrado as (
+
+    select * from deduplicado
+    where
+        deduplicado.frequencia >= 99
+        or deduplicado.frequencia is null
 
 ),
 
@@ -32,7 +50,7 @@ renomeado as (
         end as nome_disciplina,
 
         -- índice calculado pela fonte: 100 - (faltas / dias letivos), sem o fator 100.
-        -- Não é percentual de presença (valores entre 97,3 e 100).
+        -- Não é percentual de presença: vai de 99 a 100 depois do filtro.
         frequencia as indice_frequencia_fonte,
         100 - frequencia as faltas_por_dia_letivo,
 
@@ -40,7 +58,7 @@ renomeado as (
         safe.parse_date('%Y-%m-%d', data_inicio) as data_inicio,
         safe.parse_date('%Y-%m-%d', data_fim) as data_fim
 
-    from deduplicado
+    from filtrado
 
 ),
 

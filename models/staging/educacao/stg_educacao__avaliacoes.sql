@@ -6,11 +6,12 @@ origem as (
 
 ),
 
--- Remove apenas linhas idênticas em todas as colunas (limpeza sem perda).
--- Registros aluno + bimestre conflitantes são tratados na intermediate.
+-- Remove linhas idênticas (macro remover_linhas_identicas, aplicada em
+-- todas as stagings): 3 no perfilamento. Chaves com valores conflitantes
+-- são tratadas na intermediate.
 deduplicado as (
 
-    select distinct * from origem
+    {{ remover_linhas_identicas('origem') }}
 
 ),
 

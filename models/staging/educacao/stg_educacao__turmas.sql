@@ -6,6 +6,14 @@ origem as (
 
 ),
 
+-- Remove linhas idênticas (macro remover_linhas_identicas, aplicada em
+-- todas as stagings).
+deduplicado as (
+
+    {{ remover_linhas_identicas('origem') }}
+
+),
+
 renomeado as (
 
     select
@@ -16,7 +24,7 @@ renomeado as (
         -- ano letivo anonimizado pelo produtor (constante: 2000)
         ano as ano_letivo
 
-    from origem
+    from deduplicado
 
 )
 
