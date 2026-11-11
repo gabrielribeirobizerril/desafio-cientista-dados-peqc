@@ -18,7 +18,7 @@ escolas as (
 
 ),
 
--- Left join: uma escola ausente do cadastro não elimina a turma do mapa
+-- Left join: uma escola ausente da tabela escola não elimina a turma do mapa
 -- (o teste not_null de bairro_escola acusa o caso).
 turmas_com_escola as (
 

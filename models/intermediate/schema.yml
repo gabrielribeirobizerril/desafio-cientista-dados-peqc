@@ -8,7 +8,7 @@ models:
       Mapa turma -> escola -> bairro da escola: uma linha por turma (5.516).
       A escola vem de stg_educacao__frequencias, única tabela com id_escola;
       o bairro vem de stg_educacao__escolas (left join, para não perder turmas
-      cuja escola faltasse no cadastro). Só o par turma -> escola da frequência
+      cuja escola faltasse na tabela escola). Só o par turma -> escola da frequência
       é usado; o vínculo aluno -> turma daquela tabela não é confiável.
       Validado com evidência independente: 67% das mudanças de turma na
       avaliação ficam na mesma escola segundo este mapa, contra 0,05% esperado
@@ -39,7 +39,7 @@ models:
         description: >
           Hash do bairro da escola. Unidade geográfica dos indicadores.
         data_tests:
-          # Nulo indicaria escola ausente do cadastro (órfã no left join).
+          # Nulo indicaria escola ausente da tabela escola (órfã no left join).
           - not_null
 
   # Avaliações consolidadas por aluno + turma + bimestre
@@ -50,8 +50,8 @@ models:
       possui_conflito): se os valores não nulos coincidem, mantém o valor; se
       divergem, a coluna fica nula e a flag de conflito correspondente é
       marcada. Escola e bairro vêm do mapa turma -> escola (left join,
-      cobertura de ~81% das linhas). Base dos indicadores por turma, escola,
-      bairro e mobilidade.
+      cobertura de ~81% das linhas). Base da atribuição de turma em
+      int_avaliacoes_por_aluno_bimestre.
     data_tests:
       # Chave do model: a consolidação existe para garanti-la, então uma
       # duplicata aqui é bug do model (na staging era só monitorada).
@@ -72,14 +72,30 @@ models:
           name: avaliacoes_conflito_frequencia_implica_valor_nulo
           arguments:
             expression: "not possui_conflito_frequencia or percentual_frequencia_bimestre is null"
+      # Um teste por disciplina: a nota em conflito precisa ter sido anulada.
+      # Um único teste com "ou" passaria se qualquer outra nota estivesse nula.
       - dbt_utils.expression_is_true:
-          name: avaliacoes_conflito_nota_implica_nota_nula
+          name: avaliacoes_conflito_portugues_implica_nota_nula
+          arguments:
+            expression: "not possui_conflito_nota_portugues or nota_portugues is null"
+      - dbt_utils.expression_is_true:
+          name: avaliacoes_conflito_ciencias_implica_nota_nula
+          arguments:
+            expression: "not possui_conflito_nota_ciencias or nota_ciencias is null"
+      - dbt_utils.expression_is_true:
+          name: avaliacoes_conflito_matematica_implica_nota_nula
+          arguments:
+            expression: "not possui_conflito_nota_matematica or nota_matematica is null"
+      # A flag geral é exatamente o "ou" das três por disciplina.
+      - dbt_utils.expression_is_true:
+          name: avaliacoes_conflito_nota_coerente_com_disciplinas
           arguments:
             expression: >
-              not possui_conflito_nota
-              or nota_portugues is null
-              or nota_ciencias is null
-              or nota_matematica is null
+              possui_conflito_nota = (
+                  possui_conflito_nota_portugues
+                  or possui_conflito_nota_ciencias
+                  or possui_conflito_nota_matematica
+              )
       - dbt_utils.expression_is_true:
           name: avaliacoes_conflito_so_em_linha_consolidada
           arguments:
@@ -111,13 +127,6 @@ models:
       - name: bairro_escola
         data_type: string
         description: Hash do bairro da escola. Nulo nas mesmas linhas de id_escola.
-
-      - name: id_turma_final
-        data_type: string
-        description: Turma final do aluno (stg_educacao__turmas).
-        data_tests:
-          # Todo aluno avaliado tem turma final; nulo indicaria falha no join.
-          - not_null
 
       - name: bimestre
         data_type: int64
@@ -159,7 +168,19 @@ models:
         data_type: boolean
         description: >
           Verdadeiro quando a chave tinha notas divergentes em português,
-          ciências ou matemática; a nota em conflito foi anulada.
+          ciências ou matemática ("ou" das três flags por disciplina).
+
+      - name: possui_conflito_nota_portugues
+        data_type: boolean
+        description: Notas de português divergentes na chave; a nota foi anulada.
+
+      - name: possui_conflito_nota_ciencias
+        data_type: boolean
+        description: Notas de ciências divergentes na chave; a nota foi anulada.
+
+      - name: possui_conflito_nota_matematica
+        data_type: boolean
+        description: Notas de matemática divergentes na chave; a nota foi anulada.
 
       - name: possui_conflito_frequencia
         data_type: boolean
@@ -167,27 +188,28 @@ models:
           Verdadeiro quando a chave tinha frequências divergentes; a frequência
           foi anulada.
 
-      - name: eh_turma_final
-        data_type: boolean
-        description: >
-          Verdadeiro quando a turma da avaliação é a turma final do aluno.
-
   # Avaliações por aluno + bimestre
   - name: int_avaliacoes_por_aluno_bimestre
     description: >
       Uma linha por aluno + bimestre (todos os pares de
       int_avaliacoes_consolidadas). Regra de atribuição de turma: só se
-      atribui quando um único registro carrega informação: (1) turma única;
+      atribui quando há uma única turma candidata pela hierarquia nota >
+      frequência: (1) turma única;
       (2) várias turmas e só uma com nota; ou (3) nenhuma com nota e só uma
       com frequência. Nos demais casos (notas em mais de uma turma, ou
       nenhuma nota e frequência em mais de uma turma) a turma, a escola, as
       notas e a frequência ficam nulas e possui_conflito_turma = true (283
       pares na carga atual; outros 255 pares em várias turmas foram
-      atribuídos pelos critérios 2 e 3). Nunca se calcula média entre turmas.
+      atribuídos pelos critérios 2 e 3). No critério 2, a frequência vem da
+      turma com nota mesmo que outra turma também tenha frequência (222
+      pares): premissa de que a turma onde o aluno foi avaliado é a turma
+      em que estava. Nunca se calcula média entre turmas.
       A origem dos registros em várias turmas (transferência, recodificação
       ou erro) não é identificável com os dados disponíveis. Única fonte
-      desta regra: os marts filtram `not possui_conflito_turma` nos
-      indicadores de desempenho e absenteísmo e nunca a reimplementam.
+      desta regra: os marts de desempenho leem as notas já atribuídas (via
+      int_notas_por_aluno_bimestre_disciplina) e nunca a reimplementam. Nos
+      pares em conflito as notas são nulas, então saem das médias sem
+      filtro adicional. O absenteísmo não usa este modelo.
     data_tests:
       # Granularidade descrita no enunciado. Falhava na staging (só
       # monitorada); aqui é garantida pelo group by da regra de atribuição.
@@ -241,8 +263,9 @@ models:
         data_type: boolean
         description: >
           Verdadeiro quando o aluno aparece em mais de uma turma no bimestre
-          com valores concorrentes e não há turma atribuída. Linhas com true
-          ficam fora dos indicadores de desempenho e absenteísmo.
+          com valores concorrentes e não há turma atribuída. Nessas linhas
+          as notas são nulas, por isso ficam fora dos indicadores de
+          desempenho.
         data_tests:
           - not_null
 
@@ -292,7 +315,8 @@ models:
         data_type: boolean
         description: >
           Verdadeiro quando qtd_turmas_no_bimestre > 1. Descreve o fato
-          observado, sem afirmar a causa. Base da contagem descritiva.
+          observado, sem afirmar a causa (transferência, recodificação ou
+          erro). Informativa: não é usada por nenhum mart.
 
   # Frequências consolidadas por aluno + turma + disciplina + período
   - name: int_frequencias_consolidadas
@@ -302,7 +326,7 @@ models:
       possui_conflito_frequencia = true (mesma regra de
       int_avaliacoes_consolidadas, pelas macros consolidar_valor e
       possui_conflito). O vínculo aluno -> turma desta fonte não é confiável
-      (11 de 97.044 alunos coincidem com a turma final); usar para agregações
+      (11 de 97.044 alunos têm a mesma turma que em aluno); usar para agregações
       por turma, escola, disciplina e período, não por aluno.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
@@ -386,3 +410,348 @@ models:
       - name: possui_conflito_frequencia
         data_type: boolean
         description: Verdadeiro quando a chave tinha valores divergentes; a medida foi anulada.
+
+  # Notas em formato longo (tidy) por aluno + bimestre + disciplina
+  - name: int_notas_por_aluno_bimestre_disciplina
+    description: >
+      Uma linha por nota existente: aluno + bimestre + disciplina. Unpivot das
+      notas de int_avaliacoes_por_aluno_bimestre (turma atribuída). Notas
+      nulas ficam fora (o unpivot do BigQuery exclui nulos), inclusive as dos
+      pares com conflito de turma. Inglês fora (100% nulo). Acrescenta a faixa
+      etária da tabela aluno. Base única dos marts de desempenho.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [id_aluno, bimestre, disciplina]
+    columns:
+      - name: id_aluno
+        data_type: string
+        description: Aluno.
+        data_tests:
+          - not_null
+
+      - name: id_escola
+        data_type: string
+        description: Escola da turma atribuída. Nula se a turma está fora do mapa.
+
+      - name: bairro_escola
+        data_type: string
+        description: Hash do bairro da escola. Nulo nas mesmas linhas de id_escola.
+
+      - name: faixa_etaria
+        data_type: string
+        description: Faixa etária da tabela aluno.
+        data_tests:
+          - not_null
+
+      - name: disciplina
+        data_type: string
+        description: portugues, ciencias ou matematica.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['portugues', 'ciencias', 'matematica']
+
+      - name: bimestre
+        data_type: int64
+        description: Bimestre do ano letivo (1 a 4).
+
+      - name: ordem_faixa_etaria
+        data_type: int64
+        description: Ordem natural das faixas (1 a 5).
+
+      - name: nota
+        data_type: float64
+        description: Nota de 0 a 10 (nunca nula neste model).
+        data_tests:
+          - not_null
+
+  # Uma linha por aluno + escola + disciplina + período (turmas juntadas)
+  - name: int_frequencias_por_aluno_escola_disciplina_periodo
+    description: >
+      Uma linha por aluno + escola + disciplina + período. Junta as turmas do
+      aluno no mesmo período e na mesma escola (mudança de turma no meio do
+      período): as frações
+      de falta das turmas são somadas e a duração do período conta uma vez.
+      Evidência: nos períodos com mais de uma turma, a fração por turma é
+      cerca de metade da dos períodos com uma turma e a soma das turmas é
+      igual, ou seja, cada turma registra só as faltas dos dias em que o
+      aluno esteve nela, sobre os dias letivos do período inteiro. Ficam com
+      faltas_por_dia_letivo nula, e fora do cálculo, os períodos com alguma
+      turma em conflito (fração nula na consolidação), os períodos em que a
+      soma das turmas passa de 1 (mais faltas que dias letivos, mesmo critério
+      dos registros abaixo de 99 excluídos na staging) e os períodos em que o
+      aluno aparece em mais de uma escola (mudança de escola no meio do
+      período): a fonte não informa quantos dias o aluno ficou em cada escola,
+      e atribuir a duração inteira a cada vínculo diluiria as faltas, enquanto
+      reparti-la exigiria inventar uma divisão. O período sai dos dois
+      vínculos; um vínculo formado só por esses períodos deixa de existir.
+      Antes desta regra, cada
+      turma somava a duração inteira do período ao denominador, o que diluía
+      as faltas de quem mudou de turma (sensibilidade em
+      analyses/sensibilidade_regras_frequencia.sql).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [id_aluno, id_escola, disciplina, data_inicio, data_fim]
+          config:
+            severity: error
+      # Coerência das flags: a fração é nula se, e somente se, alguma turma
+      # está em conflito, a soma das turmas passa de 1 ou o aluno aparece em
+      # mais de uma escola no período.
+      - dbt_utils.expression_is_true:
+          name: frequencias_periodo_fracao_nula_coerente_com_flags
+          arguments:
+            expression: "(faltas_por_dia_letivo is null) = (possui_turma_sem_valor or possui_faltas_acima_do_periodo or possui_multiplas_escolas_no_periodo)"
+      # Monitoramento (warn): linhas excluídas por mudança de escola no meio
+      # do período. Avisa o volume a cada carga, para a exclusão não ser
+      # silenciosa.
+      - dbt_utils.expression_is_true:
+          name: frequencias_periodo_com_multiplas_escolas
+          arguments:
+            expression: "not possui_multiplas_escolas_no_periodo"
+          config:
+            severity: warn
+      # Monitoramento (warn): períodos excluídos por terem mais faltas que
+      # dias letivos depois de somar as turmas (7 na carga atual). Avisa se o
+      # volume mudar entre cargas.
+      - dbt_utils.expression_is_true:
+          name: frequencias_periodo_com_faltas_acima_do_periodo
+          arguments:
+            expression: "not possui_faltas_acima_do_periodo"
+          config:
+            severity: warn
+    columns:
+      - name: id_aluno
+        data_type: string
+        description: Aluno segundo a tabela frequencia (não ligar à tabela aluno).
+        data_tests:
+          - not_null
+
+      - name: id_escola
+        data_type: string
+        description: Escola do registro de frequência.
+        data_tests:
+          - not_null
+
+      - name: disciplina
+        data_type: string
+        description: portugues, ciencias, ingles ou matematica.
+        data_tests:
+          - not_null
+
+      - name: data_inicio
+        data_type: date
+        description: Início do período de apuração.
+        data_tests:
+          - not_null
+
+      - name: data_fim
+        data_type: date
+        description: Fim do período de apuração.
+
+      - name: duracao_periodo_dias
+        data_type: int64
+        description: Duração inclusiva do período, contada uma vez por período.
+
+      - name: qtd_turmas
+        data_type: int64
+        description: Turmas do aluno no período (registros de int_frequencias_consolidadas juntados).
+        data_tests:
+          # Reconciliação: cada registro consolidado entra em exatamente um
+          # período; nenhum é perdido ou contado duas vezes.
+          - soma_reconcilia_com:
+              arguments:
+                comparar_com: ref('int_frequencias_consolidadas')
+                expressao: "count(*)"
+
+      - name: qtd_escolas_no_periodo
+        data_type: int64
+        description: Escolas em que o aluno aparece na mesma disciplina e período.
+
+      - name: possui_multiplas_turmas_no_periodo
+        data_type: boolean
+        description: Verdadeiro quando qtd_turmas > 1 (aluno mudou de turma no período).
+
+      - name: possui_multiplas_escolas_no_periodo
+        data_type: boolean
+        description: >
+          Verdadeiro quando qtd_escolas_no_periodo > 1 (aluno mudou de escola
+          no período); o período fica fora do cálculo nas duas escolas.
+
+      - name: possui_turma_sem_valor
+        data_type: boolean
+        description: Verdadeiro quando alguma turma do período teve a fração anulada por conflito.
+
+      - name: possui_faltas_acima_do_periodo
+        data_type: boolean
+        description: >
+          Verdadeiro quando a soma das frações das turmas passa de 1 (mais
+          faltas que dias letivos); o período fica fora do cálculo.
+
+      - name: faltas_por_dia_letivo
+        data_type: float64
+        description: >
+          Soma das frações de falta das turmas do período (faltas / dias
+          letivos do período). Nula quando alguma turma está em conflito,
+          quando a soma passa de 1 ou quando o aluno aparece em mais de uma
+          escola no período.
+        data_tests:
+          # Validade: depois de excluir as somas acima de 1, nenhum valor pode
+          # sair da faixa de 0 a 1 (erro da transformação, não da fonte).
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+
+  # Frequência estimada por aluno + escola + disciplina
+  - name: int_frequencias_por_aluno_escola_disciplina
+    description: >
+      Uma linha por aluno + escola + disciplina, nos períodos que a fonte
+      traz (2000-02-05 a 2000-10-03, concentrados até 2000-07-17). Soma
+      faltas ponderadas (faltas_por_dia_letivo x duração do período) e dias
+      entre os períodos de int_frequencias_por_aluno_escola_disciplina_periodo
+      (cada período uma vez, com as faltas de todas as turmas do aluno nele);
+      converte para percentual (macro percentual_frequencia) e marca o
+      absenteísmo crônico (macro abaixo_da_frequencia_minima). É uma
+      estimativa, sob as premissas: faltas e dias letivos na mesma unidade;
+      dias corridos como aproximação dos dias letivos. Períodos com turma em
+      conflito ficam fora. O id_aluno desta fonte não é o da tabela aluno:
+      não ligar a alunos ou avaliações.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [id_aluno, id_escola, disciplina]
+    columns:
+      - name: id_aluno
+        data_type: string
+        description: Aluno segundo a tabela frequencia (não ligar à tabela aluno).
+        data_tests:
+          - not_null
+
+      - name: id_escola
+        data_type: string
+        description: Escola do registro de frequência.
+        data_tests:
+          - not_null
+
+      - name: disciplina
+        data_type: string
+        description: portugues, ciencias, ingles ou matematica.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['portugues', 'ciencias', 'ingles', 'matematica']
+
+      - name: qtd_periodos
+        data_type: int64
+        description: Períodos com frequência válida somados nesta linha.
+        data_tests:
+          # Reconciliação: nenhum período válido perdido ou duplicado.
+          - soma_reconcilia_com:
+              arguments:
+                comparar_com: ref('int_frequencias_por_aluno_escola_disciplina_periodo')
+                expressao: "countif(faltas_por_dia_letivo is not null)"
+
+      - name: soma_faltas
+        data_type: float64
+        description: Soma de faltas_por_dia_letivo x duracao_periodo_dias.
+
+      - name: soma_dias
+        data_type: int64
+        description: Soma das durações dos períodos (dias corridos), cada período uma vez.
+        data_tests:
+          # Reconciliação do denominador: os dias somados são exatamente os
+          # dos períodos válidos, cada um contado uma vez (e não uma vez por
+          # turma, como na regra anterior).
+          - soma_reconcilia_com:
+              arguments:
+                comparar_com: ref('int_frequencias_por_aluno_escola_disciplina_periodo')
+                expressao: "sum(if(faltas_por_dia_letivo is not null, duracao_periodo_dias, 0))"
+
+      - name: percentual_frequencia
+        data_type: float64
+        description: 100 x (1 - soma_faltas / soma_dias), entre 0 e 100.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 100
+
+      - name: possui_absenteismo_cronico
+        data_type: boolean
+        description: Frequência abaixo de 75% (var percentual_frequencia_minima).
+        data_tests:
+          - not_null
+
+  # Frequência global estimada por aluno + escola
+  - name: int_frequencias_por_aluno_escola
+    description: >
+      Uma linha por aluno + escola (vínculo aluno-escola). Frequência global
+      estimada nos períodos da fonte: soma faltas e dias de todas as disciplinas de
+      int_frequencias_por_aluno_escola_disciplina (sem média de médias).
+      Premissa: as disciplinas têm a mesma carga por dia. Aluno em duas
+      escolas tem uma linha em cada, mas os períodos em que esteve nas duas ao
+      mesmo tempo ficam fora (regra em
+      int_frequencias_por_aluno_escola_disciplina_periodo). Base dos marts de
+      absenteísmo por escola e bairro.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [id_aluno, id_escola]
+    columns:
+      - name: id_aluno
+        data_type: string
+        description: Aluno segundo a tabela frequencia (não ligar à tabela aluno).
+        data_tests:
+          - not_null
+
+      - name: id_escola
+        data_type: string
+        description: Escola.
+        data_tests:
+          - not_null
+
+      - name: qtd_disciplinas
+        data_type: int64
+        description: Disciplinas com frequência apurada para o aluno na escola.
+        data_tests:
+          # Reconciliação: cada linha por disciplina entra em exatamente um
+          # vínculo aluno-escola. Garante que os marts de absenteísmo por
+          # escola, bairro e disciplina partem dos mesmos registros.
+          - soma_reconcilia_com:
+              arguments:
+                comparar_com: ref('int_frequencias_por_aluno_escola_disciplina')
+                expressao: "count(*)"
+
+      - name: soma_faltas
+        data_type: float64
+        description: Soma das faltas ponderadas de todas as disciplinas.
+
+      - name: soma_dias
+        data_type: int64
+        description: Soma dos dias de todas as disciplinas.
+        data_tests:
+          # Reconciliação do denominador: nenhum dia é perdido ou somado duas
+          # vezes ao agregar as disciplinas.
+          - soma_reconcilia_com:
+              arguments:
+                comparar_com: ref('int_frequencias_por_aluno_escola_disciplina')
+                expressao: "sum(soma_dias)"
+
+      - name: percentual_frequencia
+        data_type: float64
+        description: 100 x (1 - soma_faltas / soma_dias), entre 0 e 100.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 100
+
+      - name: possui_absenteismo_cronico
+        data_type: boolean
+        description: Frequência abaixo de 75% (var percentual_frequencia_minima).
+        data_tests:
+          - not_null

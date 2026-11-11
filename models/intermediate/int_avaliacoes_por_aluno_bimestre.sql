@@ -40,7 +40,8 @@ candidatas as (
 --   (1) turma única; ou
 --   (2) várias turmas, mas só uma com nota; ou
 --   (3) nenhuma turma com nota e só uma com frequência.
--- Em resumo: atribui quando um único registro carrega informação.
+-- Hierarquia: a nota define a turma (onde o aluno fez prova é onde ele
+-- estava); a frequência acompanha essa turma e só desempata sem nota.
 -- Nos demais casos, possui_conflito_turma = true e a turma fica nula.
 -- Nunca se calcula média entre turmas.
 atribuicao as (

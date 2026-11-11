@@ -6,16 +6,6 @@ avaliacoes as (
 
 ),
 
-turmas_finais as (
-
-    select
-        id_aluno,
-        id_turma as id_turma_final
-
-    from {{ ref('stg_educacao__turmas') }}
-
-),
-
 mapa as (
 
     select * from {{ ref('int_turmas_mapeadas_para_escolas') }}
@@ -23,8 +13,9 @@ mapa as (
 ),
 
 -- Uma linha por aluno + turma + bimestre. Regra de consolidação nas macros
--- consolidar_valor e possui_conflito. nota_ingles fica fora do conflito de
--- notas por ser 100% nula.
+-- consolidar_valor e possui_conflito, com uma flag de conflito por disciplina
+-- (permite testar cada nota). nota_ingles fica fora do conflito de notas por
+-- ser 100% nula.
 consolidado as (
 
     select
@@ -40,19 +31,17 @@ consolidado as (
 
         count(*) as qtd_linhas_origem,
         {{ possui_conflito('percentual_frequencia_bimestre') }} as possui_conflito_frequencia,
-        (
-            {{ possui_conflito('nota_portugues') }}
-            or {{ possui_conflito('nota_ciencias') }}
-            or {{ possui_conflito('nota_matematica') }}
-        ) as possui_conflito_nota
+        {{ possui_conflito('nota_portugues') }} as possui_conflito_nota_portugues,
+        {{ possui_conflito('nota_ciencias') }} as possui_conflito_nota_ciencias,
+        {{ possui_conflito('nota_matematica') }} as possui_conflito_nota_matematica
 
     from avaliacoes
     group by id_aluno, id_turma, bimestre
 
 ),
 
--- Left joins: turmas fora do mapa ficam com escola nula (cobertura ~81%),
--- sem perder a avaliação.
+-- Left join: turmas fora do mapa ficam com escola nula (cobertura ~81% das
+-- linhas), sem perder a avaliação.
 final as (
 
     select
@@ -60,7 +49,6 @@ final as (
         consolidado.id_turma,
         mapa.id_escola,
         mapa.bairro_escola,
-        turmas_finais.id_turma_final,
         consolidado.bimestre,
         consolidado.percentual_frequencia_bimestre,
         consolidado.nota_portugues,
@@ -69,15 +57,19 @@ final as (
         consolidado.nota_matematica,
         consolidado.qtd_linhas_origem,
         consolidado.qtd_linhas_origem > 1 as foi_consolidado,
-        consolidado.possui_conflito_nota,
-        consolidado.possui_conflito_frequencia,
-        consolidado.id_turma = turmas_finais.id_turma_final as eh_turma_final
+        (
+            consolidado.possui_conflito_nota_portugues
+            or consolidado.possui_conflito_nota_ciencias
+            or consolidado.possui_conflito_nota_matematica
+        ) as possui_conflito_nota,
+        consolidado.possui_conflito_nota_portugues,
+        consolidado.possui_conflito_nota_ciencias,
+        consolidado.possui_conflito_nota_matematica,
+        consolidado.possui_conflito_frequencia
 
     from consolidado
     left join mapa
         on consolidado.id_turma = mapa.id_turma
-    left join turmas_finais
-        on consolidado.id_aluno = turmas_finais.id_aluno
 
 )
 
