@@ -4,10 +4,10 @@ data_tests:
   - name: regra_turma_final_consistente
     description: >
       Regra de negócio: a turma final de cada aluno deve ser a mesma em
-      stg_educacao__alunos e stg_educacao__turmas (as duas fontes do vínculo).
-      Confirmado em 100% dos alunos no perfilamento. Uma divergência indicaria
-      que as fontes deixaram de concordar, e a regra da turma final da
-      intermediate passaria a depender de qual tabela fosse usada.
+      stg_educacao__alunos e stg_educacao__turmas (as duas tabelas trazem o
+      vínculo aluno -> turma). Confirmado em 100% dos alunos no perfilamento.
+      Uma divergência indicaria que as fontes deixaram de concordar, e
+      qualquer análise por turma final passaria a depender da tabela usada.
 
   - name: reconciliacao_pares_aluno_bimestre
     description: >
@@ -15,3 +15,25 @@ data_tests:
       exatamente os mesmos pares aluno + bimestre de
       int_avaliacoes_consolidadas, nem a mais nem a menos. Garante que a regra
       de atribuição marca os conflitos em vez de descartar linhas.
+
+  - name: reconciliacao_notas_com_atribuicao
+    description: >
+      Reconciliação entre camadas: o unpivot das notas tem uma linha para cada
+      nota não nula de int_avaliacoes_por_aluno_bimestre. Junto com as
+      reconciliações dos marts, garante que os três marts de desempenho partem
+      do mesmo conjunto de notas.
+
+  - name: fonte_frequencia_dentro_da_regra_de_calculo
+    description: >
+      Monitoramento da fonte (warn): registros de frequencia abaixo de 99, que
+      pela regra de cálculo do produtor (100 - faltas / dias letivos)
+      indicariam mais faltas que dias letivos (1.857; 0,07% da base). Saem na
+      staging; o teste mostra se esse volume muda entre cargas.
+
+  - name: fonte_frequencia_preenchida
+    description: >
+      Monitoramento da fonte (warn): registros de frequencia com o índice
+      nulo. Não saem na staging (o filtro de valores impossíveis mantém os
+      nulos), mas não entram no cálculo do absenteísmo. O teste
+      vale como alerta: mostra quantos registros ficam fora do cálculo por
+      falta de informação.
