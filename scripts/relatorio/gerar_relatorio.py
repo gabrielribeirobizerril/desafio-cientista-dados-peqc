@@ -17,14 +17,17 @@ from datetime import date
 
 import pandas as pd
 
-MARTS = [
-    "absenteismo_escola",
-    "absenteismo_bairro",
-    "absenteismo_disciplina",
-    "desempenho_escola",
-    "desempenho_bairro",
-    "desempenho_faixa_etaria",
-]
+TITULO = "Report - Desafio Técnico"
+
+# Marts na ordem do relatório, com o título da seção (também usado no sumário).
+MARTS = {
+    "absenteismo_escola": "Absenteísmo crônico por escola",
+    "absenteismo_bairro": "Absenteísmo crônico por bairro",
+    "absenteismo_disciplina": "Absenteísmo crônico por disciplina",
+    "desempenho_escola": "Desempenho por escola",
+    "desempenho_bairro": "Desempenho por bairro",
+    "desempenho_faixa_etaria": "Desempenho por faixa etária",
+}
 NOME = {"portugues": "Português", "matematica": "Matemática", "ciencias": "Ciências", "ingles": "Inglês"}
 
 # Tamanho mínimo para listas e percentis (mesmos cortes do notebook ii_analytics).
@@ -61,9 +64,9 @@ def kpis(itens):
     ) + "</div>"
 
 
-def secao(mart, titulo, corpo):
+def secao(mart, corpo):
     return (
-        f'<details open><summary><span class="t">{titulo}</span>'
+        f'<details open id="{mart}"><summary><span class="t">{MARTS[mart]}</span>'
         f'<code>mart_educacao__{mart}</code></summary><div class="corpo">{corpo}</div></details>'
     )
 
@@ -191,7 +194,7 @@ def absenteismo_escola(ae):
         [[hashc(r.id_escola), hashc(r.bairro_escola), n(r.qtd_alunos), n(r.qtd_alunos_absenteismo_cronico),
           pct(r.taxa_absenteismo_cronico), n(r.media_percentual_frequencia, 1) + "%"] for r in top.itertuples()],
     )
-    return secao("absenteismo_escola", "Absenteísmo crônico por escola", corpo)
+    return secao("absenteismo_escola", corpo)
 
 
 def absenteismo_bairro(ab):
@@ -213,7 +216,7 @@ def absenteismo_bairro(ab):
         [[hashc(r.bairro_escola), n(r.qtd_escolas), n(r.qtd_vinculos_aluno_escola),
           n(r.qtd_vinculos_absenteismo_cronico), pct(r.taxa_absenteismo_cronico)] for r in top.itertuples()],
     )
-    return secao("absenteismo_bairro", "Absenteísmo crônico por bairro", corpo)
+    return secao("absenteismo_bairro", corpo)
 
 
 def absenteismo_disciplina(ad):
@@ -227,7 +230,7 @@ def absenteismo_disciplina(ad):
         [[NOME[r.disciplina], n(r.qtd_vinculos_aluno_escola), n(r.qtd_vinculos_absenteismo_cronico),
           pct(r.taxa_absenteismo_cronico), n(r.media_percentual_frequencia, 1) + "%"] for r in ad.itertuples()],
     )
-    return secao("absenteismo_disciplina", "Absenteísmo crônico por disciplina", corpo)
+    return secao("absenteismo_disciplina", corpo)
 
 
 def resumo_desempenho(df, unidade, minimo_rotulo):
@@ -246,14 +249,14 @@ def resumo_desempenho(df, unidade, minimo_rotulo):
 def desempenho_escola(de):
     corpo = kpis([(n(de["id_escola"].nunique()), "escolas com notas"), (n(de["qtd_notas"].sum()), "notas com escola conhecida")])
     corpo += resumo_desempenho(de, "Escolas", "30+ notas")
-    return secao("desempenho_escola", "Desempenho por escola", corpo)
+    return secao("desempenho_escola", corpo)
 
 
 def desempenho_bairro(db):
     corpo = kpis([(n(db["bairro_escola"].nunique()), "bairros com notas")])
     corpo += f"<figure>{boxplot(db, ['portugues', 'ciencias', 'matematica'])}</figure>"
     corpo += resumo_desempenho(db, "Bairros", "30+ notas")
-    return secao("desempenho_bairro", "Desempenho por bairro", corpo)
+    return secao("desempenho_bairro", corpo)
 
 
 def desempenho_faixa_etaria(df):
@@ -266,7 +269,7 @@ def desempenho_faixa_etaria(df):
         [[r.faixa_etaria, NOME[r.disciplina], n(r.qtd_alunos), n(r.qtd_notas), n(r.media_nota, 2), n(r.desvio_padrao_nota, 2)]
          for r in df.itertuples()],
     )
-    return secao("desempenho_faixa_etaria", "Desempenho por faixa etária", corpo)
+    return secao("desempenho_faixa_etaria", corpo)
 
 
 # ---------------------------------------------------------------- página
@@ -279,7 +282,13 @@ CSS = """
 body{margin:0;background:var(--surface);color:var(--text);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 main{max-width:880px;margin:0 auto;padding:36px 16px 56px}
 h1{font-size:1.6rem;margin:0 0 8px}
-.cab{color:var(--text-2);margin:0 0 24px}
+.cab{color:var(--text-2);margin:0 0 20px}
+html{scroll-behavior:smooth}details{scroll-margin-top:16px}
+.sumario{border:1px solid var(--border);border-radius:10px;padding:12px 18px;margin:0 0 20px;background:var(--surface-2)}
+.sumario b{font-size:.85rem;color:var(--text-2);text-transform:uppercase;letter-spacing:.04em}
+.sumario ol{margin:8px 0 0;padding-left:22px;columns:2;column-gap:32px}
+.sumario li{margin:3px 0;break-inside:avoid}.sumario a{color:var(--s1);text-decoration:none}.sumario a:hover{text-decoration:underline}
+@media (max-width:600px){.sumario ol{columns:1}}
 details{border:1px solid var(--border);border-radius:10px;margin:14px 0;background:var(--surface)}
 summary{cursor:pointer;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;
 background:var(--surface-2);border-radius:10px;list-style:none}
@@ -289,6 +298,7 @@ details[open] summary::before{content:"▾"}
 details[open] summary{border-radius:10px 10px 0 0}
 summary .t{font-weight:600;font-size:1.05rem;flex:1}
 summary code{font:.78rem ui-monospace,Menlo,monospace;color:var(--text-2)}
+@media (max-width:600px){summary{flex-wrap:wrap}summary code{flex-basis:100%;padding-left:20px;overflow-wrap:anywhere}}
 .corpo{padding:4px 16px 14px}
 h3{font-size:.95rem;margin:20px 0 4px}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin:14px 0}
@@ -311,6 +321,12 @@ figure{margin:12px 0}
 """
 
 
+def sumario():
+    """Menu de navegação com um link para a seção de cada mart."""
+    itens = "".join(f'<li><a href="#{mart}">{titulo}</a></li>' for mart, titulo in MARTS.items())
+    return f'<nav class="sumario" aria-label="Sumário"><b>Sumário</b><ol>{itens}</ol></nav>'
+
+
 def gerar(ler, saida, origem):
     dados = {m: ler(f"mart_educacao__{m}") for m in MARTS}
     cabecalho = (
@@ -331,8 +347,8 @@ def gerar(ler, saida, origem):
     pagina = (
         '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
-        f"<title>Resultados dos indicadores educacionais</title><style>{CSS}</style></head><body><main>"
-        f'<h1>Desempenho e absenteísmo na rede municipal</h1><p class="cab">{cabecalho}</p>'
+        f"<title>{TITULO}</title><style>{CSS}</style></head><body><main>"
+        f'<h1>{TITULO}</h1><p class="cab">{cabecalho}</p>{sumario()}'
         f"{corpo}</main></body></html>"
     )
     with open(saida, "w", encoding="utf-8") as arquivo:
