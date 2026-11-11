@@ -1,5 +1,19 @@
 # Desafio RMI — Cientista de Dados
 
+**Sumário**
+
+1. [Apresentação](#1-apresentação)
+   - [Estrutura do projeto](#estrutura-do-projeto) · [Linhagem](#linhagem) · [Como reproduzir](#como-reproduzir)
+2. [Regras de negócio](#2-regras-de-negócio)
+3. [Indicadores](#3-indicadores)
+4. [O que cada camada tratou](#4-o-que-cada-camada-tratou)
+5. [Perfilamento](#5-perfilamento)
+6. [Camadas](#6-camadas)
+   - [Staging](#61-staging) · [Intermediate](#62-intermediate) · [Marts](#63-marts)
+7. [Testes](#7-testes)
+8. [Principais achados](#8-principais-achados)
+9. [Referências](#referências)
+
 ## 1. Apresentação
 
 Este repositório apresenta minha solução para o desafio técnico proposto. Mais do que simplesmente focar em disponibilizar dados prontos para consumo, busquei desenvolver uma modelagem de dados em dbt, seguindo boas práticas e documentando as decisões tomadas ao longo do processo.
@@ -339,7 +353,7 @@ Os dados foram aleatorizados na anonimização, então os números ilustram o m�
   - Só há notas para 11 a 14, 15 a 17 e 18 anos ou mais; a distribuição de faixas da tabela `aluno` é implausível para a rede municipal.
 
 
-## Referências
+## 9. Referências
 
 BRASIL. Lei nº 9.394, de 20 de dezembro de 1996. Estabelece as diretrizes e bases da educação nacional. *Diário Oficial da União*, Brasília, DF, 23 dez. 1996. Disponível em: https://www.planalto.gov.br/ccivil_03/leis/l9394.htm. Acesso em: 11 nov. 2026.
 
