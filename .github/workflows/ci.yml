@@ -1,0 +1,44 @@
+# CI do projeto: valida o projeto dbt e os scripts a cada push e pull request.
+# Não acessa o BigQuery e não usa credenciais: o `dbt parse` lê o projeto
+# inteiro (SQL, Jinja, YAML, refs, sources, testes e DAG) sem abrir conexão,
+# usando o profiles.yml.example como perfil.
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar o repositório
+        uses: actions/checkout@v4
+
+      - name: Instalar o Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar o dbt
+        run: pip install -r requirements.txt
+
+      - name: Usar o perfil de exemplo (sem credenciais)
+        run: |
+          cp profiles.yml.example "$RUNNER_TEMP/profiles.yml"
+          echo "DBT_PROFILES_DIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      - name: Instalar os pacotes dbt
+        run: dbt deps
+
+      # --warn-error: qualquer aviso de parse (ref quebrada, coluna de YAML
+      # sem modelo, config inválida) reprova o CI.
+      - name: Validar o projeto dbt
+        run: dbt parse --warn-error
+
+      - name: Validar os scripts e notebooks Python
+        run: |
+          python -m py_compile scripts/relatorio/gerar_relatorio.py
+          python -c "import json, glob; [json.load(open(n, encoding='utf-8')) for n in glob.glob('notebooks/*.ipynb')]"
