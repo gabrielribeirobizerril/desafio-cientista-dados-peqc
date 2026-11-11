@@ -17,6 +17,8 @@ test-paths: ["tests"]
 seed-paths: ["seeds"]
 macro-paths: ["macros"]
 snapshot-paths: ["snapshots"]
+# Imagens usadas na página inicial do dbt docs (models/visao_geral.md).
+asset-paths: ["assets"]
 
 clean-targets:         # directories to be removed by `dbt clean`
   - "target"
@@ -24,6 +26,11 @@ clean-targets:         # directories to be removed by `dbt clean`
 
 models:
   rmi_educacao:
+    # Dicionário de dados no BigQuery: grava as descrições do YAML nas
+    # tabelas, views e colunas (visíveis no console e no INFORMATION_SCHEMA).
+    +persist_docs:
+      relation: true
+      columns: true
     staging:
       +materialized: view
       +schema: staging
@@ -36,3 +43,8 @@ models:
       +materialized: table
       +schema: marts
       +tags: ["marts"]
+
+vars:
+  # LDB, art. 24, VI: frequência mínima de 75% das horas letivas.
+  # Única definição do limite do absenteísmo crônico no projeto.
+  percentual_frequencia_minima: 75

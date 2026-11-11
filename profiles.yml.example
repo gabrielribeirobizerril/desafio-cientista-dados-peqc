@@ -1,0 +1,24 @@
+# Perfil de conexão do dbt com o BigQuery (sem credenciais).
+#
+# Como usar:
+#   1. copie este arquivo para ~/.dbt/profiles.yml
+#      (Windows: %USERPROFILE%\.dbt\profiles.yml);
+#   2. troque <seu-projeto> pelo id do seu projeto no GCP;
+#   3. autentique com: gcloud auth application-default login
+#   4. confira com: dbt debug
+#
+# Os datasets das camadas são criados pelo dbt como <dataset>_<camada>:
+# dbt_dev_staging, dbt_dev_intermediate e dbt_dev_marts.
+
+rmi_educacao:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project: <seu-projeto>
+      dataset: dbt_dev
+      location: US
+      threads: 4
+      job_execution_timeout_seconds: 300
+      priority: interactive
