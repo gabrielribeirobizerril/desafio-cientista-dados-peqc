@@ -2,38 +2,92 @@
 
 ## 1. Apresentação
 
+Este repositório apresenta minha solução para o desafio técnico proposto. Mais do que simplesmente focar em disponibilizar dados prontos para consumo, busquei desenvolver uma modelagem de dados em dbt, seguindo boas práticas e documentando as decisões tomadas ao longo do processo.
 
-Este repositório traz a minha solução para o desafio técnico proposto. A ideia que norteou não foi tanto ter os prontos para consumo e mais ir montando uma modelagem em dbt, utilizando as melhores práticas e documentando as decisões tomadas ao longo da construção. Tentando aproximar de uma trabalho real, tentei usar o máximo das tabelas fornecidas, para construir, ao final, indicadores que poderiam ser utilizados por gestores ou pela sociedade civil, para dar transparência e auxiliar nas tomadas de decisão.
+Com o objetivo de aproximar o exercício de um cenário real de trabalho, procurei explorar ao máximo as tabelas fornecidas, estruturando um fluxo de transformação de dados que permitisse, ao final, construir indicadores (ainda que fictícios) relevantes para gestores públicos e para a sociedade civil. A proposta foi, portanto, não apenas atender aos requisitos técnicos do desafio, mas também demonstrar como uma modelagem bem estruturada deve se preocupar com a transparência e o monitoramento dos fluxos.
 
-O projeto foi organizado seguindos as camadas raw(source) → staging → intermediate → marts. O enunciado original está em [ENUNCIADO.md](ENUNCIADO.md), a análise dos resultados em [docs/relatorio-resultados.html](https://gabrielribeirobizerril.github.io/desafio-cientista-dados-peqc/relatorio-resultados.html) e a análise exploratória em [notebooks/i_eda.ipynb](notebooks/i_eda.ipynb).
+O projeto foi estruturado em quatro camadas de transformação de dados: **raw (source) → staging → intermediate → marts**, seguindo as boas práticas de modelagem em dbt. O enunciado original está disponível em [ENUNCIADO.md](ENUNCIADO.md), a análise dos resultados em [docs/relatorio-resultados.html](https://gabrielribeirobizerril.github.io/desafio-cientista-dados-peqc/relatorio-resultados.html) e a análise exploratória em [notebooks/i_eda.ipynb](notebooks/i_eda.ipynb). A documentação mais pormenorizada de cada modelo, com descrição das colunas, testes e linhagem, pode ser encontrada no [dbt docs](https://gabrielribeirobizerril.github.io/desafio-cientista-dados-peqc/) e no [BigQuery](https://console.cloud.google.com/bigquery?project=desafio-cientista-dados-peqc), onde as mesmas descrições ficam gravadas em cada tabela e coluna.
 
-O projeto foi construído a partir de um princípio que guiou todas as decisões, a saber, cada regra de negócio é escrita uma única vez (em uma macro ou em um único modelo) e as etapas seguintes apenas a reutilizam. Com isso, os testes de reconciliação conseguem conferir, a cada execução, que os totais se mantêm de uma camada para a outra e que todos os indicadores de uma mesma família partem da mesma base.
+Um dos princípios centrais da arquitetura foi **definir cada regra de negócio uma única vez**, seja em uma macro ou em um modelo específico, evitando duplicações e garantindo sua reutilização nas etapas seguintes. Essa abordagem facilita a manutenção do código, assegura a consistência das transformações e permite que os testes de reconciliação verifiquem, a cada execução, se os totais permanecem coerentes entre as camadas e se os indicadores de uma mesma família são calculados a partir de uma base comum.
 
 ### Estrutura do projeto
 
 ```
 ├── models/
-│   ├── staging/educacao/   5 modelos (1 por tabela), sources.yml, schema.yml
-│   ├── intermediate/       8 modelos, schema.yml
-│   ├── marts/              6 modelos com contrato, schema.yml
-│   ├── exposures.yml       entregas que consomem o projeto (relatório e notebook de EDA)
-│   └── visao_geral.md      página inicial do dbt docs
-├── tests/                  testes singulares
-│   └── generic/            testes genéricos customizados
-├── macros/                 regras definidas uma única vez
-├── analyses/               contagem de linhas por etapa; sensibilidade das regras de frequência
+│   ├── staging/educacao/                      1 modelo por tabela da fonte
+│   │   ├── sources.yml                        fontes raw_rmi, com descrição e testes da origem
+│   │   ├── schema.yml
+│   │   ├── stg_educacao__alunos.sql
+│   │   ├── stg_educacao__avaliacoes.sql
+│   │   ├── stg_educacao__escolas.sql
+│   │   ├── stg_educacao__frequencias.sql
+│   │   └── stg_educacao__turmas.sql
+│   ├── intermediate/
+│   │   ├── schema.yml
+│   │   ├── int_turmas_mapeadas_para_escolas.sql
+│   │   ├── int_avaliacoes_consolidadas.sql
+│   │   ├── int_avaliacoes_por_aluno_bimestre.sql
+│   │   ├── int_notas_por_aluno_bimestre_disciplina.sql
+│   │   ├── int_frequencias_consolidadas.sql
+│   │   ├── int_frequencias_por_aluno_escola_disciplina_periodo.sql
+│   │   ├── int_frequencias_por_aluno_escola_disciplina.sql
+│   │   └── int_frequencias_por_aluno_escola.sql
+│   ├── marts/                                 tabelas com contrato
+│   │   ├── schema.yml
+│   │   ├── mart_educacao__absenteismo_escola.sql
+│   │   ├── mart_educacao__absenteismo_bairro.sql
+│   │   ├── mart_educacao__absenteismo_disciplina.sql
+│   │   ├── mart_educacao__desempenho_escola.sql
+│   │   ├── mart_educacao__desempenho_bairro.sql
+│   │   └── mart_educacao__desempenho_faixa_etaria.sql
+│   ├── exposures.yml                          entregas que consomem o projeto (relatório e notebook de EDA)
+│   └── visao_geral.md                         página inicial do dbt docs
+├── tests/
+│   ├── schema.yml                             descrição dos testes singulares
+│   ├── fonte_frequencia_dentro_da_regra_de_calculo.sql
+│   ├── fonte_frequencia_preenchida.sql
+│   ├── regra_turma_final_consistente.sql
+│   ├── reconciliacao_pares_aluno_bimestre.sql
+│   ├── reconciliacao_notas_com_atribuicao.sql
+│   └── generic/                               testes genéricos customizados
+│       ├── compara_linhas_com_origem.sql
+│       ├── soma_reconcilia_com.sql
+│       └── valor_unico_por_grupo.sql
+├── macros/                                    regras definidas uma única vez
+│   ├── abaixo_da_frequencia_minima.sql
+│   ├── percentual_frequencia.sql
+│   ├── consolidar_valor.sql
+│   ├── possui_conflito.sql
+│   ├── formatar_id_aluno.sql
+│   └── remover_linhas_identicas.sql
+├── analyses/
+│   ├── contagem_linhas_por_etapa.sql          linhas em cada etapa do fluxo
+│   └── sensibilidade_regras_frequencia.sql    efeito de cada regra de frequência no indicador
 ├── scripts/
-│   ├── load_raw.ps1        carga idempotente dos Parquets, com conferência
-│   ├── publicar_docs.ps1   gera o dbt docs e copia para docs/ (GitHub Pages)
-│   └── relatorio/          exporta os marts em CSV e gera o relatório HTML
+│   ├── load_raw.ps1                           carga idempotente dos Parquets, com conferência
+│   ├── publicar_docs.ps1                      gera o dbt docs e copia para docs/ (GitHub Pages)
+│   ├── docs/
+│   │   └── tema.html                          botão de tema claro/escuro injetado no dbt docs
+│   └── relatorio/
+│       ├── exportar_marts.ps1                 exporta os seis marts em CSV
+│       └── gerar_relatorio.py                 gera o relatório HTML a partir dos CSVs
 ├── notebooks/
-│   ├── i_eda.ipynb         análise exploratória e perfilamento das tabelas brutas
-│   └── ii_analytics.ipynb  carga dos marts para análise dos indicadores
-├── assets/                 diagrama de linhagem usado no dbt docs
-├── docs/                   site no GitHub Pages: dbt docs, relatório de resultados e schema_produtor.yml
-├── .github/workflows/      CI: valida o projeto dbt e os scripts a cada push
-├── profiles.yml.example    modelo de perfil de conexão (sem credenciais)
-└── dbt_project.yml         materializações por camada e var do limite de 75%
+│   ├── i_eda.ipynb                            análise exploratória e perfilamento das tabelas brutas
+│   └── ii_analytics.ipynb                     verificação dos principais achados a partir dos marts
+├── assets/
+│   └── linhagem.svg                           diagrama de linhagem usado no dbt docs
+├── docs/                                      site no GitHub Pages
+│   ├── index.html                             dbt docs (gerado pelo publicar_docs.ps1)
+│   ├── assets/linhagem.svg                    cópia gerada junto com o dbt docs
+│   ├── relatorio-resultados.html              relatório de resultados
+│   └── schema_produtor.yml                    documentação da fonte
+├── .github/workflows/
+│   └── ci.yml                                 CI: valida o projeto dbt e os scripts a cada push
+├── dbt_project.yml                            materializações por camada e var do limite de 75%
+├── packages.yml / package-lock.yml            dbt_utils, dbt_expectations, codegen
+├── profiles.yml.example                       modelo de perfil de conexão (sem credenciais)
+├── requirements.txt                           dbt-core e dbt-bigquery
+└── ENUNCIADO.md                               enunciado original do desafio
 ```
 
 Staging e intermediate são materializadas como views, porque são etapas de preparação lidas só pelo próprio projeto; os marts são tabelas com contrato (nomes e tipos de coluna garantidos), porque são o que chega ao usuário final. Os nomes de modelos e colunas estão em português, as chaves são STRING com o nome que têm na fonte (`id_aluno`, `id_turma`, `id_escola`) e os booleanos começam com `eh_`, `possui_` ou `foi_`, para dar mais legibilidade para as tabelas.
@@ -78,7 +132,7 @@ O [dbt docs](https://gabrielribeirobizerril.github.io/desafio-cientista-dados-pe
 
 Os pré-requisitos são Python com `dbt-core 1.12` e `dbt-bigquery 1.12` (`requirements.txt`), o gcloud CLI (que traz o `bq`) e um projeto no BigQuery (o Sandbox basta).
 
-1. Carregar os dados brutos. O script cria o dataset `raw_rmi` (location `US`), carrega os cinco Parquets de `gs://case_vagas/rmi` sem transformação e confere as contagens de linhas, falhando se alguma divergir. A carga é idempotente, ou seja, pode ser repetida sem duplicar dados.
+1. **Carregar os dados brutos.** O script cria o dataset `raw_rmi` (location `US`), carrega os cinco Parquets de `gs://case_vagas/rmi` sem transformação e confere as contagens de linhas, falhando se alguma divergir. A carga é idempotente, ou seja, pode ser repetida sem duplicar dados.
 
    ```powershell
    gcloud auth login
@@ -95,9 +149,9 @@ Os pré-requisitos são Python com `dbt-core 1.12` e `dbt-bigquery 1.12` (`requi
    done
    ```
 
-2. Configurar o perfil. Copie [profiles.yml.example](profiles.yml.example) para `~/.dbt/profiles.yml` (Windows: `%USERPROFILE%\.dbt\profiles.yml`) e troque `<seu-projeto>` pelo id do seu projeto.
+2. **Configurar o perfil.** Copie [profiles.yml.example](profiles.yml.example) para `~/.dbt/profiles.yml` (Windows: `%USERPROFILE%\.dbt\profiles.yml`) e troque `<seu-projeto>` pelo id do seu projeto.
 
-3. Rodar o dbt. Os modelos são criados em `dbt_dev_staging`, `dbt_dev_intermediate` e `dbt_dev_marts`.
+3. **Rodar o dbt.** Os modelos são criados em `dbt_dev_staging`, `dbt_dev_intermediate` e `dbt_dev_marts`.
 
    ```powershell
    pip install -r requirements.txt
@@ -106,7 +160,7 @@ Os pré-requisitos são Python com `dbt-core 1.12` e `dbt-bigquery 1.12` (`requi
    dbt build
    ```
 
-4. Abrir a documentação localmente, ou atualizar a versão publicada no GitHub Pages (gera o site em `docs/index.html`, que vai para o Pages no push).
+4. **Abrir a documentação** localmente, ou atualizar a versão publicada no GitHub Pages (gera o site em `docs/index.html`, que vai para o Pages no push).
 
    ```powershell
    dbt docs generate
@@ -114,7 +168,7 @@ Os pré-requisitos são Python com `dbt-core 1.12` e `dbt-bigquery 1.12` (`requi
    .\scripts\publicar_docs.ps1
    ```
 
-5. Gerar o relatório de resultados (`docs/relatorio-resultados.html`): exporta os seis marts em CSV e monta o HTML.
+5. **Gerar o relatório de resultados** (`docs/relatorio-resultados.html`). Com isso os seis marts são exportados em CSV e monta o HTML.
 
    ```powershell
    .\scripts\relatorio\exportar_marts.ps1 -Project <seu-projeto>
@@ -185,7 +239,7 @@ Dois desses achados definiram a arquitetura. O primeiro é que o `id_aluno` da `
 
 A staging tem um modelo por tabela da fonte, sem joins nem agregações, seguindo as [boas práticas do dbt](https://docs.getdbt.com/best-practices/how-we-structure/2-staging). A camada só tipa, renomeia e aplica filtros de validade, mantendo a correspondência com a raw.
 
-| Modelo | Origem | Chave | Linhas (raw → staging) | O que mudou | Regra associada |
+| Modelo | Origem | Chave | Nº Linhas (raw → staging) | O que mudou | Regra associada |
 |---|---|---|---:|---|---|
 | [`stg_educacao__alunos`](models/staging/educacao/stg_educacao__alunos.sql) | `raw_rmi.aluno` | `id_aluno` | 97.044 → 97.044 | <ul><li>`id_aluno` de BYTES para texto;</li><li>`bairro` → `bairro_residencia`;</li><li>cria `ordem_faixa_etaria`.</li></ul> | remoção de linhas idênticas |
 | [`stg_educacao__turmas`](models/staging/educacao/stg_educacao__turmas.sql) | `raw_rmi.turma` | `id_aluno` | 97.044 → 97.044 | <ul><li>ids para texto;</li><li>`ano` → `ano_letivo`.</li></ul> | ano letivo único; turma final consistente |
@@ -193,13 +247,13 @@ A staging tem um modelo por tabela da fonte, sem joins nem agregações, seguind
 | [`stg_educacao__frequencias`](models/staging/educacao/stg_educacao__frequencias.sql) | `raw_rmi.frequencia` | `id_aluno`, `id_turma`, `disciplina`, `data_inicio`, `data_fim` | 2.727.684 → 2.724.344 | <ul><li>remove 1.483 linhas idênticas e 1.857 registros abaixo de 99 (nulos mantidos);</li><li>`frequencia` → `indice_frequencia_fonte`;</li><li>cria `nome_disciplina`, `faltas_por_dia_letivo` e `duracao_periodo_dias`.</li></ul> | frequência da fonte entre 99 e 100 |
 | [`stg_educacao__avaliacoes`](models/staging/educacao/stg_educacao__avaliacoes.sql) | `raw_rmi.avaliacao` | `id_aluno`, `id_turma`, `bimestre` | 221.687 → 221.684 | <ul><li>remove 3 linhas idênticas;</li><li>`disciplina_1` a `disciplina_4` → `nota_portugues`, `nota_ciencias`, `nota_ingles`, `nota_matematica`;</li><li>`frequencia` → `percentual_frequencia_bimestre`;</li><li>`bimestre` para inteiro.</li></ul> | remoção de linhas idênticas |
 
-A decisão mais relevante desta camada foi a chave da `avaliacao`. O enunciado declara uma linha por aluno, disciplina e bimestre, o que, com as disciplinas em colunas, equivale a aluno + bimestre. Essa chave tem 569 repetições, das quais 538 são alunos em mais de uma turma no mesmo bimestre, cada turma com o seu próprio registro (em 165 dos 185 pares com nota nas duas turmas, as notas são diferentes). Portanto não se trata de cópias, e juntá-las na staging exigiria escolher entre valores, o que é regra de negócio. Com a turma na chave restam 31 repetições de fato, tratadas na intermediate. As duas chaves continuam testadas na staging como aviso, para que a divergência com o enunciado fique visível a cada execução.
+A decisão mais relevante desta camada foi a chave da `avaliacao`. O enunciado declara uma linha por aluno, disciplina e bimestre, o que, com as disciplinas em colunas, equivale a aluno + bimestre. Essa chave tem 569 repetições, das quais 538 são alunos em mais de uma turma no mesmo bimestre, cada turma com o seu próprio registro (em 165 dos 185 pares com nota nas duas turmas, as notas são diferentes). Portanto não se trata de cópias, e juntá-las na staging exigiria escolher entre valores, o que é regra de negócio. Com a turma na chave restaram 31 repetições de fato, e isso foi tratado na intermediate. As duas chaves continuam testadas na staging como aviso, para que a divergência com o enunciado fique visível a cada execução.
 
 ### 6.2 Intermediate
 
 A intermediate é onde ficam as regras de negócio e as mudanças de granularidade, conforme a [documentação do dbt](https://docs.getdbt.com/best-practices/how-we-structure/3-intermediate). Os joins são `left` sempre que a outra tabela pode não ter correspondência, para não perder registros: uma turma fora do mapa fica com escola nula (81% das avaliações têm escola) em vez de sumir.
 
-| Modelo | Origem | Chave | Linhas | O que mudou | Regra associada |
+| Modelo | Origem | Chave | Nº Linhas | O que mudou | Regra associada |
 |---|---|---|---:|---|---|
 | [`int_turmas_mapeadas_para_escolas`](models/intermediate/int_turmas_mapeadas_para_escolas.sql) | `stg_educacao__frequencias`, `stg_educacao__escolas` | `id_turma` | 5.516 | mapa turma → escola → bairro | cada turma em uma única escola |
 | [`int_avaliacoes_consolidadas`](models/intermediate/int_avaliacoes_consolidadas.sql) | `stg_educacao__avaliacoes`, mapa | `id_aluno`, `id_turma`, `bimestre` | 221.653 | consolida as 31 chaves repetidas, com uma flag de conflito por disciplina; traz escola e bairro | consolidação; escola pelo mapa |
@@ -217,9 +271,20 @@ Quatro decisões desta camada merecem explicação:
 
 * **4ª) exclusão dos períodos compartilhados entre escolas:** quando o aluno muda de escola no meio de um período, ele aparece nas duas escolas com a duração inteira do período, mas a fonte não informa quantos dias passou em cada uma. Atribuir a duração inteira a cada vínculo diluiria as faltas, pelo mesmo motivo da 3ª decisão, e repartir a duração exigiria inventar uma divisão. Como se trata de uma hipótese que os dados não permitem verificar, o período sai do cálculo nas duas escolas, com flag e monitoramento, pelo mesmo princípio aplicado aos valores em conflito. Isso atinge 3.324 alunos e retira 49.536 linhas aluno–escola–disciplina–período (1,8% do total); 1.608 vínculos (1,6%), formados só por esses períodos, deixam de existir, e os casos de absenteísmo crônico passam de 3.116 para 3.177 (taxa de 3,10% para 3,21%).
 
-A frequência escolar calculada é uma estimativa, sob duas premissas: faltas e dias letivos da fonte estão na mesma unidade, e a duração do período em dias corridos aproxima os dias letivos. Ela também nunca é ligada à tabela `aluno` nem à `avaliacao`, porque o seu `id_aluno` não corresponde ao das outras tabelas.
+A ***frequência escolar*** calculada é uma estimativa, sob duas premissas: faltas e dias letivos da fonte estão na mesma unidade, e a duração do período em dias corridos aproxima os dias letivos. Ela também nunca é ligada à tabela `aluno` nem à `avaliacao`, porque o seu `id_aluno` não corresponde ao das outras tabelas.
 
 ### 6.3 Marts
+
+Os marts são tabelas com contrato (nomes e tipos de coluna garantidos), uma por pergunta de gestão, conforme a [documentação do dbt](https://docs.getdbt.com/best-practices/how-we-structure/4-marts). Cada um só agrega a base da intermediate; nenhuma regra nova é criada nesta camada.
+
+| Modelo | Origem | Chave | Nº Linhas | O que mudou | Regra associada |
+|---|---|---|---:|---|---|
+| [`mart_educacao__absenteismo_escola`](models/marts/mart_educacao__absenteismo_escola.sql) | `int_frequencias_por_aluno_escola`, `stg_educacao__escolas` | `id_escola` | 521 | agrega os vínculos aluno–escola por escola; traz o bairro da escola | absenteísmo crônico (frequência abaixo de 75%) |
+| [`mart_educacao__absenteismo_bairro`](models/marts/mart_educacao__absenteismo_bairro.sql) | `int_frequencias_por_aluno_escola`, `stg_educacao__escolas` | `bairro_escola` | 135 | agrega os vínculos pelo bairro da escola, recalculando a taxa a partir dos registros | absenteísmo crônico; totais iguais aos do mart por escola |
+| [`mart_educacao__absenteismo_disciplina`](models/marts/mart_educacao__absenteismo_disciplina.sql) | `int_frequencias_por_aluno_escola_disciplina` | `disciplina` | 4 | agrega os vínculos aluno–escola–disciplina por disciplina | absenteísmo crônico |
+| [`mart_educacao__desempenho_escola`](models/marts/mart_educacao__desempenho_escola.sql) | `int_notas_por_aluno_bimestre_disciplina` | `id_escola`, `disciplina` | 1.425 | média e desvio padrão das notas por escola; fora as notas sem escola atribuída | turma do aluno no bimestre; escola pelo mapa |
+| [`mart_educacao__desempenho_bairro`](models/marts/mart_educacao__desempenho_bairro.sql) | `int_notas_por_aluno_bimestre_disciplina` | `bairro_escola`, `disciplina` | 402 | média e desvio padrão das notas pelo bairro da escola, recalculados a partir das notas | totais iguais aos do mart por escola |
+| [`mart_educacao__desempenho_faixa_etaria`](models/marts/mart_educacao__desempenho_faixa_etaria.sql) | `int_notas_por_aluno_bimestre_disciplina` | `faixa_etaria`, `disciplina` | 9 | média e desvio padrão das notas por faixa etária, com a ordem das faixas | base única do desempenho |
 
 Os marts estão descritos na seção 3. As decisões aqui foram de unidade e de base. A unidade do desempenho é a nota do aluno no bimestre; a do absenteísmo é o vínculo aluno–escola, ou seja, o aluno que passou por duas escolas conta em cada uma. O bairro é recalculado a partir dos registros, e não como média das escolas. Quanto à base, os três marts de desempenho leem o mesmo modelo (`int_notas_por_aluno_bimestre_disciplina`) sem filtro próprio, e os três de absenteísmo partem dos mesmos registros; os testes de reconciliação confirmam isso a cada execução. A cobertura é limitada pela fonte: 521 das 1.558 escolas têm frequência, 475 têm notas atribuídas e só três faixas etárias têm notas.
 
