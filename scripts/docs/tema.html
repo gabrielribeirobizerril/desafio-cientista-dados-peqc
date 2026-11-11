@@ -1,0 +1,33 @@
+<!-- Alternância de tema claro/escuro, injetada por scripts/publicar_docs.ps1.
+     O dbt docs não tem tema escuro: o modo escuro inverte as cores da página.
+     O painel do grafo de linhagem já é escuro, então é reinvertido para
+     manter as cores originais. A escolha fica salva no navegador. -->
+<style>
+html.tema-escuro { filter: invert(1) hue-rotate(180deg); background: #fff; }
+html.tema-escuro .launcher-window { filter: invert(1) hue-rotate(180deg); }
+#botao-tema {
+  position: fixed; top: 12px; right: 16px; z-index: 10000;
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border: 1px solid #d0d5dd; border-radius: 999px;
+  background: #fff; color: #262a38; font: 600 13px/1 system-ui, sans-serif; cursor: pointer;
+}
+#botao-tema:hover { background: #f2f4f7; }
+</style>
+<button id="botao-tema" type="button" aria-label="Alternar entre tema claro e escuro"></button>
+<script>
+(function () {
+  var raiz = document.documentElement, botao = document.getElementById("botao-tema");
+  function aplicar(escuro) {
+    raiz.classList.toggle("tema-escuro", escuro);
+    botao.textContent = escuro ? "☀ Tema claro" : "☾ Tema escuro";
+  }
+  var salvo = null;
+  try { salvo = localStorage.getItem("tema-dbt-docs"); } catch (e) {}
+  aplicar(salvo === "escuro");
+  botao.addEventListener("click", function () {
+    var escuro = !raiz.classList.contains("tema-escuro");
+    aplicar(escuro);
+    try { localStorage.setItem("tema-dbt-docs", escuro ? "escuro" : "claro"); } catch (e) {}
+  });
+})();
+</script>
