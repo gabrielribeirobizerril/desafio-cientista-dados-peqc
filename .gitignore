@@ -11,7 +11,7 @@ logs/
 .env
 *.json
 
-# Notebooks de trabalho (o EDA final entrará como exceção explícita)
+# Notebooks de trabalho (o EDA é a exceção explícita abaixo)
 *.ipynb
 
 # Editor
@@ -22,3 +22,14 @@ logs/
 # Cópias antigas das notas (remover estas linhas depois de apagar as pastas)
 claude_outputs/
 notas/progresso-e-achados.md
+
+# Notebook de análise exploratória (versionado)
+!notebooks/i_eda.ipynb
+# Cache local das tabelas brutas lidas pelo notebook
+notebooks/dados_raw/
+
+# Dados exportados para gerar o relatório (refeitos a partir dos marts)
+scripts/relatorio/dados/
+
+# Revisões de trabalho (fora da entrega)
+revisao-projeto.md
