@@ -1,0 +1,505 @@
+version: 2
+
+models:
+
+  # ---------------------------------------------------------------------------
+  # Desempenho (fonte: avaliacao)
+  # Os três marts leem o mesmo model (int_notas_por_aluno_bimestre_disciplina)
+  # e não aplicam filtro além de escola conhecida (escola e bairro). As
+  # reconciliações garantem que partem das mesmas notas.
+  # ---------------------------------------------------------------------------
+
+  - name: mart_educacao__desempenho_escola
+    description: >
+      Desempenho por escola e disciplina. Uma linha por escola + disciplina.
+      A escola é a da turma atribuída ao aluno no bimestre (mapa turma ->
+      escola). Cobre 475 escolas: as notas de turmas fora do mapa (3,8% das
+      notas) não têm escola e ficam fora.
+    config:
+      # Contrato: nomes e tipos das colunas são verificados antes de a tabela
+      # ser criada. Protege quem consome o mart de mudanças silenciosas.
+      contract:
+        enforced: true
+      meta:
+        indicador: media_nota
+        numerador: soma_notas (soma das notas existentes)
+        denominador: qtd_notas (notas não nulas)
+        unidade: nota do aluno no bimestre na disciplina
+        granularidade: escola + disciplina
+        fonte: avaliacao (int_notas_por_aluno_bimestre_disciplina)
+    data_tests:
+      # Granularidade: uma linha por escola e disciplina. Uma duplicata contaria o mesmo
+      # grupo duas vezes em qualquer soma feita a partir do mart.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [id_escola, disciplina]
+    columns:
+      - name: id_escola
+        data_type: string
+        description: Escola.
+        data_tests:
+          - not_null
+          # Integridade: toda escola do mart existe na tabela escola.
+          - relationships:
+              arguments:
+                to: ref('stg_educacao__escolas')
+                field: id_escola
+
+      - name: bairro_escola
+        data_type: string
+        description: Hash do bairro da escola.
+        data_tests:
+          # Completude: sem bairro, a escola não entraria no mart por bairro.
+          - not_null
+
+      - name: disciplina
+        data_type: string
+        description: Disciplina avaliada (Inglês fica fora por ser 100% nulo na fonte).
+        data_tests:
+          - not_null
+          # Domínio: um valor novo indicaria mudança no unpivot das notas.
+          - accepted_values:
+              arguments:
+                values: ['portugues', 'ciencias', 'matematica']
+
+      - name: qtd_alunos
+        data_type: int64
+        description: >
+          Alunos distintos com ao menos uma nota no grupo. Não somar entre
+          grupos (um aluno pode estar em mais de um).
+
+      - name: qtd_notas
+        data_type: int64
+        description: >
+          Denominador da média: notas não nulas (aluno x bimestre). Grupos com
+          poucas notas têm média instável; usar este valor para filtrar.
+        data_tests:
+          # Reconciliação: soma igual às notas com escola na intermediate.
+          - soma_reconcilia_com:
+              arguments:
+                comparar_com: ref('int_notas_por_aluno_bimestre_disciplina')
+                expressao: "countif(id_escola is not null)"
+
+      - name: soma_notas
+        data_type: float64
+        description: Numerador da média. Soma das notas do grupo.
+
+      - name: media_nota
+        data_type: float64
+        description: Média das notas (escala 0 a 10) = soma_notas / qtd_notas.
+        data_tests:
+          # Validade: uma média fora da escala indicaria erro de agregação.
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 10
+
+      - name: desvio_padrao_nota
+        data_type: float64
+        description: Desvio padrão amostral das notas. Nulo com uma única nota.
+
+  - name: mart_educacao__desempenho_bairro
+    description: >
+      Desempenho por bairro da escola e disciplina. Uma linha por bairro +
+      disciplina. Recalculado a partir das notas, não da média das escolas.
+    config:
+      # Contrato: nomes e tipos das colunas são verificados antes de a tabela
+      # ser criada. Protege quem consome o mart de mudanças silenciosas.
+      contract:
+        enforced: true
+      meta:
+        indicador: media_nota
+        numerador: soma_notas (soma das notas existentes)
+        denominador: qtd_notas (notas não nulas)
+        unidade: nota do aluno no bimestre na disciplina
+        granularidade: bairro da escola + disciplina
+        fonte: avaliacao (int_notas_por_aluno_bimestre_disciplina)
+    data_tests:
+      # Granularidade: uma linha por bairro e disciplina. Uma duplicata contaria o mesmo
+      # grupo duas vezes em qualquer soma feita a partir do mart.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [bairro_escola, disciplina]
+    columns:
+      - name: bairro_escola
+        data_type: string
+        description: Hash do bairro da escola.
+        data_tests:
+          - not_null
+
+      - name: disciplina
+        data_type: string
+        description: Disciplina avaliada (Inglês fica fora por ser 100% nulo na fonte).
+        data_tests:
+          - not_null
+          # Domínio: um valor novo indicaria mudança no unpivot das notas.
+          - accepted_values:
+              arguments:
+                values: ['portugues', 'ciencias', 'matematica']
+
+      - name: qtd_escolas
+        data_type: int64
+        description: Escolas do bairro com notas.
+
+      - name: qtd_alunos
+        data_type: int64
+        description: >
+          Alunos distintos com ao menos uma nota no grupo. Não somar entre
+          grupos (um aluno pode estar em mais de um).
+
+      - name: qtd_notas
+        data_type: int64
+        description: >
+          Denominador da média: notas não nulas (aluno x bimestre). Grupos com
+          poucas notas têm média instável; usar este valor para filtrar.
+        data_tests:
+          # Reconciliação: os bairros somam as mesmas notas que as escolas.
+          - soma_reconcilia_com:
+              arguments:
+                comparar_com: ref('mart_educacao__desempenho_escola')
+                expressao: "sum(qtd_notas)"
+
+      - name: soma_notas
+        data_type: float64
+        description: Numerador da média. Soma das notas do grupo.
+
+      - name: media_nota
+        data_type: float64
+        description: Média das notas (escala 0 a 10) = soma_notas / qtd_notas.
+        data_tests:
+          # Validade: uma média fora da escala indicaria erro de agregação.
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 10
+
+      - name: desvio_padrao_nota
+        data_type: float64
+        description: Desvio padrão amostral das notas. Nulo com uma única nota.
+
+  - name: mart_educacao__desempenho_faixa_etaria
+    description: >
+      Desempenho por faixa etária e disciplina. Uma linha por faixa +
+      disciplina. Usa todas as notas, com ou sem escola conhecida. Só três
+      faixas têm notas (0-5 e 6-10 não aparecem na avaliação). Ressalva: a
+      faixa etária tem distribuição implausível (provável idade atual).
+    config:
+      # Contrato: nomes e tipos das colunas são verificados antes de a tabela
+      # ser criada. Protege quem consome o mart de mudanças silenciosas.
+      contract:
+        enforced: true
+      meta:
+        indicador: media_nota
+        numerador: soma_notas (soma das notas existentes)
+        denominador: qtd_notas (notas não nulas)
+        unidade: nota do aluno no bimestre na disciplina
+        granularidade: faixa etária + disciplina
+        fonte: avaliacao (int_notas_por_aluno_bimestre_disciplina)
+    data_tests:
+      # Granularidade: uma linha por faixa etária e disciplina. Uma duplicata contaria o mesmo
+      # grupo duas vezes em qualquer soma feita a partir do mart.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [faixa_etaria, disciplina]
+    columns:
+      - name: faixa_etaria
+        data_type: string
+        description: Faixa etária da tabela aluno.
+        data_tests:
+          - not_null
+          # Domínio: as cinco faixas da fonte.
+          - accepted_values:
+              arguments:
+                values: ['0-5', '6-10', '11-14', '15-17', '18+']
+
+      - name: ordem_faixa_etaria
+        data_type: int64
+        description: Ordem natural das faixas (1 a 5).
+
+      - name: disciplina
+        data_type: string
+        description: Disciplina avaliada (Inglês fica fora por ser 100% nulo na fonte).
+        data_tests:
+          - not_null
+          # Domínio: um valor novo indicaria mudança no unpivot das notas.
+          - accepted_values:
+              arguments:
+                values: ['portugues', 'ciencias', 'matematica']
+
+      - name: qtd_alunos
+        data_type: int64
+        description: >
+          Alunos distintos com ao menos uma nota no grupo. Não somar entre
+          grupos (um aluno pode estar em mais de um).
+
+      - name: qtd_notas
+        data_type: int64
+        description: >
+          Denominador da média: notas não nulas (aluno x bimestre). Grupos com
+          poucas notas têm média instável; usar este valor para filtrar.
+        data_tests:
+          # Reconciliação: soma igual a todas as notas da intermediate.
+          - soma_reconcilia_com:
+              arguments:
+                comparar_com: ref('int_notas_por_aluno_bimestre_disciplina')
+                expressao: "count(*)"
+
+      - name: soma_notas
+        data_type: float64
+        description: Numerador da média. Soma das notas do grupo.
+
+      - name: media_nota
+        data_type: float64
+        description: Média das notas (escala 0 a 10) = soma_notas / qtd_notas.
+        data_tests:
+          # Validade: uma média fora da escala indicaria erro de agregação.
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 10
+
+      - name: desvio_padrao_nota
+        data_type: float64
+        description: Desvio padrão amostral das notas. Nulo com uma única nota.
+
+  # ---------------------------------------------------------------------------
+  # Absenteísmo (fonte: frequencia)
+  # Frequência estimada: faltas e dias letivos na mesma unidade; dias corridos
+  # como aproximação dos dias letivos. Escola e bairro leem o mesmo model
+  # (int_frequencias_por_aluno_escola); disciplina lê o model de onde ele é
+  # agregado. As reconciliações garantem que os três partem dos mesmos
+  # registros.
+  # ---------------------------------------------------------------------------
+
+  - name: mart_educacao__absenteismo_escola
+    description: >
+      Absenteísmo crônico por escola, nos períodos que a fonte traz. Uma linha
+      por escola com frequência apurada. Frequência estimada do aluno na
+      escola = 100 x (1 - soma das faltas ponderadas / soma dos dias),
+      somando todas as disciplinas e períodos.
+    config:
+      # Contrato: nomes e tipos das colunas são verificados antes de a tabela
+      # ser criada. Protege quem consome o mart de mudanças silenciosas.
+      contract:
+        enforced: true
+      meta:
+        indicador: taxa_absenteismo_cronico
+        numerador: aluno na escola com frequência estimada abaixo de 75%
+        denominador: aluno na escola com frequência apurada
+        unidade: aluno na escola
+        granularidade: escola
+        fonte: frequencia (períodos de 2000-02-05 a 2000-10-03, concentrados até 2000-07-17)
+    data_tests:
+      # Granularidade: uma linha por escola. Uma duplicata contaria o mesmo
+      # grupo duas vezes em qualquer soma feita a partir do mart.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [id_escola]
+    columns:
+      - name: id_escola
+        data_type: string
+        description: Escola.
+        data_tests:
+          - not_null
+          - unique
+          # Integridade: toda escola do mart existe na tabela escola.
+          - relationships:
+              arguments:
+                to: ref('stg_educacao__escolas')
+                field: id_escola
+
+      - name: bairro_escola
+        data_type: string
+        description: Hash do bairro da escola.
+        data_tests:
+          # Completude: sem bairro, a escola não entraria no mart por bairro.
+          - not_null
+
+      - name: qtd_alunos
+        data_type: int64
+        description: Denominador. Alunos com frequência apurada na escola.
+        data_tests:
+          # Reconciliação: soma igual aos vínculos aluno-escola da intermediate.
+          - soma_reconcilia_com:
+              arguments:
+                comparar_com: ref('int_frequencias_por_aluno_escola')
+                expressao: "count(*)"
+
+      - name: qtd_alunos_absenteismo_cronico
+        data_type: int64
+        description: Numerador. Alunos com frequência estimada abaixo de 75%.
+
+      - name: taxa_absenteismo_cronico
+        data_type: float64
+        description: >
+          Numerador / denominador (0 a 1). Escolas ou bairros com denominador pequeno têm taxa
+          instável: um único caso muda a taxa em vários pontos percentuais.
+        data_tests:
+          - not_null
+          # Validade: proporção entre 0 e 1.
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+
+      - name: media_percentual_frequencia
+        data_type: float64
+        description: Média da frequência estimada (0 a 100).
+        data_tests:
+          # Validade: percentual entre 0 e 100.
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 100
+
+  - name: mart_educacao__absenteismo_bairro
+    description: >
+      Absenteísmo crônico por bairro da escola, nos períodos que a fonte traz.
+      Uma linha por bairro (135). Recalculado a partir dos vínculos
+      aluno-escola, não da média das taxas das escolas.
+    config:
+      # Contrato: nomes e tipos das colunas são verificados antes de a tabela
+      # ser criada. Protege quem consome o mart de mudanças silenciosas.
+      contract:
+        enforced: true
+      meta:
+        indicador: taxa_absenteismo_cronico
+        numerador: vínculo aluno-escola com frequência estimada abaixo de 75%
+        denominador: vínculo aluno-escola com frequência apurada
+        unidade: vínculo aluno-escola
+        granularidade: bairro da escola
+        fonte: frequencia (períodos de 2000-02-05 a 2000-10-03, concentrados até 2000-07-17)
+    data_tests:
+      # Granularidade: uma linha por bairro. Uma duplicata contaria o mesmo
+      # grupo duas vezes em qualquer soma feita a partir do mart.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [bairro_escola]
+    columns:
+      - name: bairro_escola
+        data_type: string
+        description: Hash do bairro da escola.
+        data_tests:
+          - not_null
+          - unique
+
+      - name: qtd_escolas
+        data_type: int64
+        description: Escolas do bairro com frequência apurada.
+
+      - name: qtd_vinculos_aluno_escola
+        data_type: int64
+        description: >
+          Denominador. Vínculos aluno-escola (aluno em duas escolas conta em
+          cada uma, sem os períodos em que esteve nas duas ao mesmo tempo).
+        data_tests:
+          # Reconciliação: os bairros somam os mesmos vínculos que as escolas.
+          - soma_reconcilia_com:
+              arguments:
+                comparar_com: ref('mart_educacao__absenteismo_escola')
+                expressao: "sum(qtd_alunos)"
+
+      - name: qtd_vinculos_absenteismo_cronico
+        data_type: int64
+        description: Numerador. Vínculos com frequência estimada abaixo de 75%.
+        data_tests:
+          # Reconciliação do numerador com o mart por escola.
+          - soma_reconcilia_com:
+              arguments:
+                comparar_com: ref('mart_educacao__absenteismo_escola')
+                expressao: "sum(qtd_alunos_absenteismo_cronico)"
+
+      - name: taxa_absenteismo_cronico
+        data_type: float64
+        description: >
+          Numerador / denominador (0 a 1). Escolas ou bairros com denominador pequeno têm taxa
+          instável: um único caso muda a taxa em vários pontos percentuais.
+        data_tests:
+          - not_null
+          # Validade: proporção entre 0 e 1.
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+
+      - name: media_percentual_frequencia
+        data_type: float64
+        description: Média da frequência estimada (0 a 100).
+        data_tests:
+          # Validade: percentual entre 0 e 100.
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 100
+
+  - name: mart_educacao__absenteismo_disciplina
+    description: >
+      Absenteísmo crônico por disciplina, nos períodos que a fonte traz. Uma
+      linha por disciplina. A frequência é calculada disciplina a disciplina
+      (recorte do projeto; a LDB define o mínimo sobre o total das horas, que
+      é o critério dos marts por escola e bairro).
+    config:
+      # Contrato: nomes e tipos das colunas são verificados antes de a tabela
+      # ser criada. Protege quem consome o mart de mudanças silenciosas.
+      contract:
+        enforced: true
+      meta:
+        indicador: taxa_absenteismo_cronico
+        numerador: vínculo aluno-escola na disciplina com frequência estimada abaixo de 75%
+        denominador: vínculo aluno-escola na disciplina com frequência apurada
+        unidade: vínculo aluno-escola na disciplina
+        granularidade: disciplina
+        fonte: frequencia (períodos de 2000-02-05 a 2000-10-03, concentrados até 2000-07-17)
+    data_tests:
+      # Granularidade: uma linha por disciplina. Uma duplicata contaria o mesmo
+      # grupo duas vezes em qualquer soma feita a partir do mart.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [disciplina]
+    columns:
+      - name: disciplina
+        data_type: string
+        description: Disciplina.
+        data_tests:
+          - not_null
+          # Domínio: as quatro disciplinas da fonte (Inglês tem frequência).
+          - accepted_values:
+              arguments:
+                values: ['portugues', 'ciencias', 'ingles', 'matematica']
+
+      - name: qtd_vinculos_aluno_escola
+        data_type: int64
+        description: Denominador. Vínculos aluno-escola com frequência apurada na disciplina.
+        data_tests:
+          # Reconciliação: soma igual às linhas da intermediate por disciplina.
+          - soma_reconcilia_com:
+              arguments:
+                comparar_com: ref('int_frequencias_por_aluno_escola_disciplina')
+                expressao: "count(*)"
+
+      - name: qtd_vinculos_absenteismo_cronico
+        data_type: int64
+        description: Numerador. Vínculos com frequência estimada abaixo de 75% na disciplina.
+
+      - name: taxa_absenteismo_cronico
+        data_type: float64
+        description: >
+          Numerador / denominador (0 a 1). Escolas ou bairros com denominador pequeno têm taxa
+          instável: um único caso muda a taxa em vários pontos percentuais.
+        data_tests:
+          - not_null
+          # Validade: proporção entre 0 e 1.
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 1
+
+      - name: media_percentual_frequencia
+        data_type: float64
+        description: Média da frequência estimada (0 a 100).
+        data_tests:
+          # Validade: percentual entre 0 e 100.
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 100
