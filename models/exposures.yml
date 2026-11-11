@@ -1,0 +1,41 @@
+version: 2
+
+# Consumidores do projeto. Aparecem no grafo de linhagem do dbt docs como os
+# nós finais, o que mostra quais modelos alimentam cada entrega.
+exposures:
+  - name: relatorio_resultados
+    label: Relatório de resultados
+    type: analysis
+    maturity: medium
+    description: >
+      Relatório HTML com a análise dos indicadores para gestores
+      (docs/relatorio-resultados.html). Gerado por
+      scripts/relatorio: exportar_marts.ps1 exporta os seis marts em CSV e
+      gerar_relatorio.py monta o HTML.
+    depends_on:
+      - ref('mart_educacao__desempenho_escola')
+      - ref('mart_educacao__desempenho_bairro')
+      - ref('mart_educacao__desempenho_faixa_etaria')
+      - ref('mart_educacao__absenteismo_escola')
+      - ref('mart_educacao__absenteismo_bairro')
+      - ref('mart_educacao__absenteismo_disciplina')
+    owner:
+      name: Gabriel Ribeiro Bizerril
+
+  - name: notebook_eda
+    label: Análise exploratória das tabelas brutas
+    type: notebook
+    maturity: medium
+    description: >
+      Notebook notebooks/i_eda.ipynb: análise exploratória e perfilamento das
+      cinco tabelas da camada raw, mais a validação do mapa turma → escola e
+      da estabilidade do id_aluno na frequencia. Lê só as sources, sem passar
+      pelo dbt.
+    depends_on:
+      - source('educacao', 'aluno')
+      - source('educacao', 'turma')
+      - source('educacao', 'escola')
+      - source('educacao', 'frequencia')
+      - source('educacao', 'avaliacao')
+    owner:
+      name: Gabriel Ribeiro Bizerril
