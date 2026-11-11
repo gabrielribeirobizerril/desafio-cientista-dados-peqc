@@ -5,7 +5,7 @@
 
 Este repositório traz a minha solução para o desafio técnico proposto. A ideia que norteou não foi tanto ter os prontos para consumo e mais ir montando uma modelagem em dbt, utilizando as melhores práticas e documentando as decisões tomadas ao longo da construção. Tentando aproximar de uma trabalho real, tentei usar o máximo das tabelas fornecidas, para construir, ao final, indicadores que poderiam ser utilizados por gestores ou pela sociedade civil, para dar transparência e auxiliar nas tomadas de decisão.
 
-O projeto foi organizado seguindos as camadas raw(source) → staging → intermediate → marts. O enunciado original está em [ENUNCIADO.md](ENUNCIADO.md), a análise dos resultados em [docs/relatorio-resultados.html](docs/relatorio-resultados.html) e a análise exploratória em [notebooks/i_eda.ipynb](notebooks/i_eda.ipynb).
+O projeto foi organizado seguindos as camadas raw(source) → staging → intermediate → marts. O enunciado original está em [ENUNCIADO.md](ENUNCIADO.md), a análise dos resultados em [docs/relatorio-resultados.html](https://gabrielribeirobizerril.github.io/desafio-cientista-dados-peqc/relatorio-resultados.html) e a análise exploratória em [notebooks/i_eda.ipynb](notebooks/i_eda.ipynb).
 
 O projeto foi construído a partir de um princípio que guiou todas as decisões, a saber, cada regra de negócio é escrita uma única vez (em uma macro ou em um único modelo) e as etapas seguintes apenas a reutilizam. Com isso, os testes de reconciliação conseguem conferir, a cada execução, que os totais se mantêm de uma camada para a outra e que todos os indicadores de uma mesma família partem da mesma base.
 
@@ -24,12 +24,13 @@ O projeto foi construído a partir de um princípio que guiou todas as decisões
 ├── analyses/               contagem de linhas por etapa; sensibilidade das regras de frequência
 ├── scripts/
 │   ├── load_raw.ps1        carga idempotente dos Parquets, com conferência
+│   ├── publicar_docs.ps1   gera o dbt docs e copia para docs/ (GitHub Pages)
 │   └── relatorio/          exporta os marts em CSV e gera o relatório HTML
 ├── notebooks/
 │   ├── i_eda.ipynb         análise exploratória e perfilamento das tabelas brutas
 │   └── ii_analytics.ipynb  carga dos marts para análise dos indicadores
 ├── assets/                 diagrama de linhagem usado no dbt docs
-├── docs/                   relatório de resultados; schema_produtor.yml (documentação da fonte)
+├── docs/                   site no GitHub Pages: dbt docs, relatório de resultados e schema_produtor.yml
 ├── .github/workflows/      CI: valida o projeto dbt e os scripts a cada push
 ├── profiles.yml.example    modelo de perfil de conexão (sem credenciais)
 └── dbt_project.yml         materializações por camada e var do limite de 75%
@@ -59,7 +60,7 @@ flowchart LR
   end
   subgraph Marts
     d1[mart_educacao__desempenho_escola]; d2[mart_educacao__desempenho_bairro]; d3[mart_educacao__desempenho_faixa_etaria]
-    a1[mart_educacao__mart_educacao__absenteismo_escola]; a2[mart_educacao__absenteismo_bairro]; a3[mart_educacao__absenteismo_disciplina]
+    a1[mart_educacao__absenteismo_escola]; a2[mart_educacao__absenteismo_bairro]; a3[mart_educacao__absenteismo_disciplina]
   end
   a-->sa; t-->st; e-->se; f-->sf; v-->sv
   sf-->im; se-->im
@@ -71,7 +72,7 @@ flowchart LR
   fe-->a1 & a2; se-->a1 & a2
 ```
 
-O dbt docs mostra a mesma linhagem, com o número de linhas em cada etapa e as entregas (*exposures*) no final do grafo.
+O [dbt docs](https://gabrielribeirobizerril.github.io/desafio-cientista-dados-peqc/), publicado no GitHub Pages, mostra a mesma linhagem, com o número de linhas em cada etapa e as entregas (*exposures*) no final do grafo.
 
 ### Como reproduzir
 
@@ -105,11 +106,12 @@ Os pré-requisitos são Python com `dbt-core 1.12` e `dbt-bigquery 1.12` (`requi
    dbt build
    ```
 
-4. Abrir a documentação.
+4. Abrir a documentação localmente, ou atualizar a versão publicada no GitHub Pages (gera o site em `docs/index.html`, que vai para o Pages no push).
 
    ```powershell
    dbt docs generate
    dbt docs serve
+   .\scripts\publicar_docs.ps1
    ```
 
 5. Gerar o relatório de resultados (`docs/relatorio-resultados.html`): exporta os seis marts em CSV e monta o HTML.
@@ -250,7 +252,7 @@ Os avisos esperados no `dbt build` são os monitoramentos da fonte:
 
 ## 8. Principais achados
 
-Os dados foram aleatorizados na anonimização, então os números ilustram o método e não descrevem a rede real. A análise completa está no [relatório](docs/relatorio-resultados.html), e os marts podem ser carregados para novas análises em [notebooks/ii_analytics.ipynb](notebooks/ii_analytics.ipynb).
+Os dados foram aleatorizados na anonimização, então os números ilustram o método e não descrevem a rede real. A análise completa está no [relatório](https://gabrielribeirobizerril.github.io/desafio-cientista-dados-peqc/relatorio-resultados.html), e os marts podem ser carregados para novas análises em [notebooks/ii_analytics.ipynb](notebooks/ii_analytics.ipynb).
 
 - **Absenteísmo por escola**
   - 3,2% dos vínculos aluno–escola (3.177 de 99.032) têm frequência estimada abaixo de 75%.
