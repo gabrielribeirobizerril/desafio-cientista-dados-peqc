@@ -17,19 +17,14 @@ logs/
 # Editor
 .vscode/
 
-# Notas de tutoria (fora do repositório)
-/Claude outputs
-# Cópias antigas das notas (remover estas linhas depois de apagar as pastas)
-claude_outputs/
-notas/progresso-e-achados.md
 
 # Notebook de análise exploratória (versionado)
 !notebooks/i_eda.ipynb
+# Notebook de análise dos achados
+!notebooks/ii_analytics.ipynb
 # Cache local das tabelas brutas lidas pelo notebook
 notebooks/dados_raw/
 
-# Dados exportados para gerar o relatório (refeitos a partir dos marts)
+# Dados exportados para gerar o relatório
 scripts/relatorio/dados/
 
-# Revisões de trabalho (fora da entrega)
-revisao-projeto.md
