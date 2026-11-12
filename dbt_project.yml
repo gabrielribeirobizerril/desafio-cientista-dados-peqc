@@ -1,26 +1,19 @@
-
-# Name your project! Project names should contain only lowercase characters
-# and underscores. A good package name should reflect your organization's
-# name or the intended use of these models
+# Projeto dbt do desafio RMI: camadas staging → intermediate → marts.
 name: 'rmi_educacao'
 version: '1.0.0'
 
-# This setting configures which "profile" dbt uses for this project.
+# Perfil de conexão (ver profiles.yml.example).
 profile: 'rmi_educacao'
 
-# These configurations specify where dbt should look for different types of files.
-# The `model-paths` config, for example, states that models in this project can be
-# found in the "models/" directory. You probably won't need to change these!
 model-paths: ["models"]
 analysis-paths: ["analyses"]
 test-paths: ["tests"]
-seed-paths: ["seeds"]
 macro-paths: ["macros"]
-snapshot-paths: ["snapshots"]
 # Imagens usadas na página inicial do dbt docs (models/visao_geral.md).
 asset-paths: ["assets"]
 
-clean-targets:         # directories to be removed by `dbt clean`
+# Pastas apagadas pelo `dbt clean`.
+clean-targets:
   - "target"
   - "dbt_packages"
 
