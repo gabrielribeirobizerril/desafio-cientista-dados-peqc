@@ -45,7 +45,7 @@ Contagens da carga atual, geradas por `analyses/contagem_linhas_por_etapa.sql`
 |---|---|---|---|
 | source | `frequencia` | 2.727.684 | — |
 | staging | `stg_educacao__frequencias` | 2.724.344 | remove linhas idênticas e registros abaixo de 99 (nulos são mantidos) |
-| intermediate | `int_frequencias_consolidadas` | 2.723.254 | consolida 1.090 chaves duplicadas |
+| intermediate | `int_frequencias_consolidadas` | 2.723.254 | consolida 1.090 chaves duplicadas (1.093 na fonte, antes da remoção dos registros abaixo de 99) |
 | intermediate | `int_frequencias_por_aluno_escola_disciplina_periodo` | 2.687.455 | junta as turmas do aluno no mesmo período e na mesma escola (faltas somadas, duração uma vez); deixa sem valor os períodos compartilhados entre escolas |
 | intermediate | `int_frequencias_por_aluno_escola_disciplina` | 396.095 | agrega os períodos por aluno + escola + disciplina |
 | intermediate | `int_frequencias_por_aluno_escola` | 99.032 | agrega as disciplinas por vínculo aluno–escola |
@@ -66,8 +66,8 @@ Contagens da carga atual, geradas por `analyses/contagem_linhas_por_etapa.sql`
 
 - `analyses/contagem_linhas_por_etapa.sql`: contagens desta página.
 - `analyses/sensibilidade_regras_frequencia.sql`: absenteísmo crônico com e
-  sem a exclusão dos registros abaixo de 99 e com e sem a junção das turmas
-  do mesmo período
+  sem cada regra da frequência (exclusão dos registros abaixo de 99, junção
+  das turmas do mesmo período e exclusão dos períodos em mais de uma escola)
   (`dbt show -s sensibilidade_regras_frequencia`).
 
 {% enddocs %}

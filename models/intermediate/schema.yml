@@ -11,7 +11,7 @@ models:
       cuja escola faltasse na tabela escola). Só o par turma -> escola da frequência
       é usado; o vínculo aluno -> turma daquela tabela não é confiável.
       Validado com evidência independente: 67% das mudanças de turma na
-      avaliação ficam na mesma escola segundo este mapa, contra 0,05% esperado
+      avaliação ficam na mesma escola segundo este mapa, contra 0,27% esperado
       ao acaso. Cobre 521 das 1.558 escolas, 135 dos 169 bairros e 81,3% dos
       registros de avaliação.
     columns:
@@ -196,8 +196,9 @@ models:
       atribui quando há uma única turma candidata pela hierarquia nota >
       frequência: (1) turma única;
       (2) várias turmas e só uma com nota; ou (3) nenhuma com nota e só uma
-      com frequência. Nos demais casos (notas em mais de uma turma, ou
-      nenhuma nota e frequência em mais de uma turma) a turma, a escola, as
+      com frequência. Nos demais casos (notas em mais de uma turma; nenhuma
+      nota e frequência em mais de uma turma; ou nenhuma nota nem frequência
+      em nenhuma das turmas) a turma, a escola, as
       notas e a frequência ficam nulas e possui_conflito_turma = true (283
       pares na carga atual; outros 255 pares em várias turmas foram
       atribuídos pelos critérios 2 e 3). No critério 2, a frequência vem da
@@ -263,7 +264,7 @@ models:
         data_type: boolean
         description: >
           Verdadeiro quando o aluno aparece em mais de uma turma no bimestre
-          com valores concorrentes e não há turma atribuída. Nessas linhas
+          e a regra de atribuição não identifica uma única turma candidata. Nessas linhas
           as notas são nulas, por isso ficam fora dos indicadores de
           desempenho.
         data_tests:
@@ -478,7 +479,8 @@ models:
       igual, ou seja, cada turma registra só as faltas dos dias em que o
       aluno esteve nela, sobre os dias letivos do período inteiro. Ficam com
       faltas_por_dia_letivo nula, e fora do cálculo, os períodos com alguma
-      turma em conflito (fração nula na consolidação), os períodos em que a
+      turma sem valor (fração nula na consolidação, por conflito ou por
+      índice nulo na fonte), os períodos em que a
       soma das turmas passa de 1 (mais faltas que dias letivos, mesmo critério
       dos registros abaixo de 99 excluídos na staging) e os períodos em que o
       aluno aparece em mais de uma escola (mudança de escola no meio do
@@ -581,7 +583,7 @@ models:
 
       - name: possui_turma_sem_valor
         data_type: boolean
-        description: Verdadeiro quando alguma turma do período teve a fração anulada por conflito.
+        description: Verdadeiro quando alguma turma do período está sem fração (conflito na consolidação ou índice nulo na fonte).
 
       - name: possui_faltas_acima_do_periodo
         data_type: boolean
@@ -593,7 +595,7 @@ models:
         data_type: float64
         description: >
           Soma das frações de falta das turmas do período (faltas / dias
-          letivos do período). Nula quando alguma turma está em conflito,
+          letivos do período). Nula quando alguma turma está sem valor,
           quando a soma passa de 1 ou quando o aluno aparece em mais de uma
           escola no período.
         data_tests:
@@ -615,9 +617,10 @@ models:
       converte para percentual (macro percentual_frequencia) e marca o
       absenteísmo crônico (macro abaixo_da_frequencia_minima). É uma
       estimativa, sob as premissas: faltas e dias letivos na mesma unidade;
-      dias corridos como aproximação dos dias letivos. Períodos com turma em
-      conflito ficam fora. O id_aluno desta fonte não é o da tabela aluno:
-      não ligar a alunos ou avaliações.
+      dias corridos como aproximação dos dias letivos. Ficam fora os períodos
+      com turma sem valor, com soma das turmas acima de 1 e com o aluno em
+      mais de uma escola. O vínculo aluno -> turma desta fonte não corresponde
+      ao da tabela aluno: não ligar a alunos ou avaliações.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:

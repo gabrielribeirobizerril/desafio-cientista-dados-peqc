@@ -344,7 +344,7 @@ models:
 
       - name: media_percentual_frequencia
         data_type: float64
-        description: Média da frequência estimada (0 a 100).
+        description: Média simples da frequência estimada dos vínculos aluno–escola (0 a 100). Cada vínculo pesa igual, sem ponderar pelos dias de cada um.
         data_tests:
           # Validade: percentual entre 0 e 100.
           - dbt_utils.accepted_range:
@@ -424,7 +424,7 @@ models:
 
       - name: media_percentual_frequencia
         data_type: float64
-        description: Média da frequência estimada (0 a 100).
+        description: Média simples da frequência estimada dos vínculos aluno–escola (0 a 100). Cada vínculo pesa igual, sem ponderar pelos dias de cada um.
         data_tests:
           # Validade: percentual entre 0 e 100.
           - dbt_utils.accepted_range:
@@ -484,8 +484,7 @@ models:
       - name: taxa_absenteismo_cronico
         data_type: float64
         description: >
-          Numerador / denominador (0 a 1). Escolas ou bairros com denominador pequeno têm taxa
-          instável: um único caso muda a taxa em vários pontos percentuais.
+          Numerador / denominador (0 a 1).
         data_tests:
           - not_null
           # Validade: proporção entre 0 e 1.
@@ -496,7 +495,7 @@ models:
 
       - name: media_percentual_frequencia
         data_type: float64
-        description: Média da frequência estimada (0 a 100).
+        description: Média simples da frequência estimada dos vínculos aluno–escola na disciplina (0 a 100). Cada vínculo pesa igual, sem ponderar pelos dias de cada um.
         data_tests:
           # Validade: percentual entre 0 e 100.
           - dbt_utils.accepted_range:

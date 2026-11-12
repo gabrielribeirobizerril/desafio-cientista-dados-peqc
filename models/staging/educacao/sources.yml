@@ -12,6 +12,8 @@ sources:
       foram preservadas, mas as relações entre colunas não são garantidas.
       Os identificadores e bairros são hashes com salt: não tentar reidentificar.
     schema: raw_rmi
+    # Sem freshness: a fonte é um extrato único e estático, carregado uma vez
+    # pelo load_raw.ps1. Não há carga recorrente cuja atualidade monitorar.
     tables:
       - name: aluno
         description: >
@@ -44,10 +46,11 @@ sources:
 
       - name: avaliacao
         description: >
-          Uma linha por aluno e bimestre, com as notas das disciplinas em colunas
+          Uma linha por aluno, turma e bimestre, com as notas das disciplinas em colunas
           (e não uma linha por disciplina, como diz o README do desafio).
           221.687 linhas de 69.502 alunos (72% dos alunos de aluno).
-          A chave aluno + bimestre não é única: 569 pares repetidos, dos quais
+          A chave aluno + bimestre não é única: 572 pares repetidos (569 depois
+          da remoção das 3 linhas idênticas), dos quais
           538 com o aluno em mais de uma turma no mesmo bimestre. 14,9% das
           linhas não têm nenhuma nota. Fonte do indicador de desempenho.
         columns:
@@ -118,7 +121,8 @@ sources:
           de 2000-07-18 restam menos de 1% dos alunos. Fonte do indicador de
           absenteísmo.
           Duplicatas: 2.576 linhas excedentes (1.483 idênticas e 1.093 chaves com
-          dois valores de frequência diferentes).
+          dois valores de frequência diferentes; 1.090 depois da remoção dos
+          registros abaixo de 99 na staging).
           O vínculo aluno → turma desta tabela não corresponde ao de aluno e
           avaliacao (concordância de 0,01%), embora a documentação do produtor
           diga o contrário: usar apenas agregados por turma, escola e

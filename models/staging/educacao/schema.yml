@@ -6,7 +6,7 @@ models:
   - name: stg_educacao__avaliacoes
     description: >
       Staging da tabela avaliacao: um registro por aluno, turma e bimestre
-      (um aluno transferido durante o bimestre tem um registro em cada turma).
+      (um aluno em mais de uma turma no bimestre tem um registro em cada turma).
       Renomeia colunas, padroniza id_aluno (hex) e id_turma (texto), converte
       bimestre para inteiro e remove linhas idênticas (3). Restam 31 chaves
       duplicadas, consolidadas na camada intermediate.

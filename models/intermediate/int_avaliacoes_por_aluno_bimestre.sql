@@ -36,13 +36,14 @@ candidatas as (
 ),
 
 -- Regra de atribuição. Único lugar onde ela existe.
--- Só se atribui turma quando não há valores concorrentes:
+-- Só se atribui turma quando há uma única turma candidata:
 --   (1) turma única; ou
 --   (2) várias turmas, mas só uma com nota; ou
 --   (3) nenhuma turma com nota e só uma com frequência.
 -- Hierarquia: a nota define a turma (onde o aluno fez prova é onde ele
 -- estava); a frequência acompanha essa turma e só desempata sem nota.
--- Nos demais casos, possui_conflito_turma = true e a turma fica nula.
+-- Nos demais casos (inclusive várias turmas sem nota nem frequência),
+-- possui_conflito_turma = true e a turma fica nula.
 -- Nunca se calcula média entre turmas.
 atribuicao as (
 

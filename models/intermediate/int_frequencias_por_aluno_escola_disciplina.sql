@@ -10,7 +10,7 @@ periodos as (
         faltas_por_dia_letivo
 
     from {{ ref('int_frequencias_por_aluno_escola_disciplina_periodo') }}
-    -- nulo = turma em conflito, soma acima de 1 ou aluno em mais de uma
+    -- nulo = turma sem valor, soma acima de 1 ou aluno em mais de uma
     -- escola no período; o período fica fora do numerador e do denominador
     where faltas_por_dia_letivo is not null
 
@@ -22,8 +22,8 @@ periodos as (
 -- (regra em int_frequencias_por_aluno_escola_disciplina_periodo).
 -- Premissas: (1) faltas e dias letivos da fonte estão na mesma unidade;
 -- (2) a duração do período (dias corridos) aproxima os dias letivos.
--- O id_aluno desta fonte identifica um aluno dentro dela, mas não é o
--- mesmo da tabela aluno: nunca ligar este model a alunos ou avaliações.
+-- O vínculo aluno -> turma desta fonte não corresponde ao da tabela aluno:
+-- nunca ligar este model a alunos ou avaliações.
 agregado as (
 
     select

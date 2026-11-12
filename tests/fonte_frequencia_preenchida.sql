@@ -1,8 +1,9 @@
 {{ config(severity = 'warn') }}
 
 -- Monitoramento da fonte: registros de frequencia sem valor. Não há nenhum na
--- carga atual. Os nulos passam pela staging e saem do cálculo na intermediate
--- (int_frequencias_por_aluno_escola_disciplina); este teste avisa se surgirem,
+-- carga atual. Os nulos passam pela staging e tiram do cálculo o período
+-- inteiro na intermediate (int_frequencias_por_aluno_escola_disciplina_periodo);
+-- este teste avisa se surgirem,
 -- para que a redução da população dos indicadores não aconteça em silêncio.
 -- Coluna qualificada pelo alias: no GoogleSQL, "frequencia" sozinho pode ser
 -- lido como a linha inteira da tabela de mesmo nome.

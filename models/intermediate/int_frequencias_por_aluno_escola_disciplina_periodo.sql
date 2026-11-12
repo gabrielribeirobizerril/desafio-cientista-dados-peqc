@@ -24,7 +24,8 @@ frequencias as (
 -- (0,219 x 0,214). Ou seja, cada turma registra só as faltas dos dias em que
 -- o aluno esteve nela, sobre os dias letivos do período inteiro.
 -- Ficam fora do cálculo (fração nula), com flag:
--- (1) período com alguma turma em conflito (fração nula na consolidação):
+-- (1) período com alguma turma sem valor (fração nula na consolidação, por
+--     conflito ou por índice nulo na fonte):
 --     sem a fração de uma das turmas, as faltas seriam subestimadas;
 -- (2) período em que a soma das turmas passa de 1: mais faltas que dias
 --     letivos, o que viola a regra de cálculo da fonte (mesmo critério dos
